@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, ChevronLeft, ChevronRight, ArrowUp } from "lucide-react";
 import { Link } from "wouter";
 import { SplitText, FadeInSection } from "@/components/split-text";
+import { useSEO } from "@/hooks/use-seo";
 
 const GALLERY_IMAGES = [
   { id: 1,  src: "/images/gallery/chat-portrait-tee.jpg",      alt: "Being Resilient Defines Character" },
@@ -58,6 +59,14 @@ function useColumnCount() {
 }
 
 export default function Gallery() {
+  useSEO({
+    title: "Editorial Gallery | Resilient Official",
+    description:
+      "Explore the Resilient Official editorial gallery — raw, authentic imagery capturing the culture behind the brand. Premium streetwear in the wild.",
+    keywords:
+      "resilient official gallery, streetwear editorial, fashion photography, resilient lookbook, urban streetwear photos",
+  });
+
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const numCols = useColumnCount();
   const columns = distributeColumns(GALLERY_IMAGES, numCols);

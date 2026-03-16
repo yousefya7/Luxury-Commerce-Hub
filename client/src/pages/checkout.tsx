@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useCart } from "@/lib/cart";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ArrowRight, CheckCircle, Lock, ArrowLeft, Loader2, Tag, X, Check } from "lucide-react";
+import { useSEO } from "@/hooks/use-seo";
 
 const stripePromise = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY
   ? loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string)
@@ -367,6 +368,10 @@ function PaymentForm({
 }
 
 export default function CheckoutPage() {
+  useSEO({
+    title: "Checkout | Resilient Official",
+    description: "Complete your Resilient Official order. Secure checkout with Apple Pay, credit card, and promo code support.",
+  });
   const { items, total, clearCart } = useCart();
   const { toast } = useToast();
   const [, navigate] = useLocation();

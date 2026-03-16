@@ -1,0 +1,108 @@
+Here's your prompt:
+
+"Add full SEO optimization across the entire website. Here are the requirements:
+
+Meta Tags on every page:
+
+Add a unique and descriptive <title> tag to every page following this format:
+
+Homepage: Resilient Official | Premium Streetwear
+Product pages: [Product Name] | Resilient Official
+Collection pages: [Collection Name] | Resilient Official
+Cart/Checkout: Checkout | Resilient Official
+Contact: Contact Us | Resilient Official
+
+
+Add a <meta name="description"> to every page with a unique 150-160 character description
+Add <meta name="keywords"> with relevant streetwear/fashion keywords
+
+
+Open Graph Tags (for social sharing and link previews):
+
+Add these to every page:
+
+
+
+     <meta property="og:title" content="Page Title" />
+     <meta property="og:description" content="Page description" />
+     <meta property="og:image" content="https://resilientofficial.com/logo.png" />
+     <meta property="og:url" content="https://resilientofficial.com" />
+     <meta property="og:type" content="website" />
+     <meta property="og:site_name" content="Resilient Official" />
+
+On product pages use the product image as the og:image
+Add Twitter Card tags as well:
+
+     <meta name="twitter:card" content="summary_large_image" />
+     <meta name="twitter:title" content="Page Title" />
+     <meta name="twitter:description" content="Page description" />
+     <meta name="twitter:image" content="product or logo image url" />
+
+Sitemap.xml:
+
+Auto generate a sitemap.xml file at https://resilientofficial.com/sitemap.xml
+Include all public pages: homepage, all product pages, all collection pages, contact page
+Update the sitemap automatically when new products are added
+Add proper <lastmod> dates and <priority> values
+
+
+Robots.txt:
+
+Create a robots.txt file at https://resilientofficial.com/robots.txt with:
+
+
+
+     User-agent: *
+     Allow: /
+     Disallow: /admin
+     Disallow: /checkout
+     Disallow: /cart
+     Sitemap: https://resilientofficial.com/sitemap.xml
+
+Canonical Tags:
+
+Add <link rel="canonical" href="current page url" /> to every page to prevent duplicate content issues
+
+
+Structured Data / Schema Markup:
+
+Add JSON-LD structured data to product pages so Google can show rich results:
+
+
+
+json     {
+       "@context": "https://schema.org",
+       "@type": "Product",
+       "name": "Product Name",
+       "image": "product image url",
+       "description": "product description",
+       "brand": {
+         "@type": "Brand",
+         "name": "Resilient Official"
+       },
+       "offers": {
+         "@type": "Offer",
+         "price": "product price",
+         "priceCurrency": "USD",
+         "availability": "https://schema.org/InStock"
+       }
+     }
+
+Add Organization schema to the homepage:
+
+json     {
+       "@context": "https://schema.org",
+       "@type": "Organization",
+       "name": "Resilient Official",
+       "url": "https://resilientofficial.com",
+       "logo": "https://resilientofficial.com/logo.png"
+     }
+
+Performance:
+
+Make sure all images have descriptive alt tags for SEO
+Add loading="lazy" to all images that are not above the fold
+Make sure the site has a proper <html lang="en"> attribute
+
+
+Do not break any existing functionality — only add SEO improvements"**

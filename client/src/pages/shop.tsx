@@ -4,12 +4,22 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SplitText, FadeInSection } from "@/components/split-text";
 import { Watermark } from "@/components/watermark";
 import type { ProductWithStock, Category } from "@shared/schema";
+import { useSEO } from "@/hooks/use-seo";
+
 function isSoldOut(product: ProductWithStock): boolean {
   if (!product.stock || product.stock.length === 0) return true;
   return product.stock.reduce((sum, s) => sum + s.quantity, 0) === 0;
 }
 
 export default function Shop() {
+  useSEO({
+    title: "Shop | Resilient Official",
+    description:
+      "Browse the full Resilient Official collection. Premium streetwear including graphic tees, hoodies, and jackets — limited drops, built to last.",
+    keywords:
+      "shop resilient official, buy streetwear, premium hoodies, graphic tees, limited streetwear drops, resilient clothing store",
+  });
+
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
   const activeCategory = params.get("category") || "all";

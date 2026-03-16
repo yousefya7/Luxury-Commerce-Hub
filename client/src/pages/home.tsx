@@ -9,8 +9,25 @@ import { Watermark } from "@/components/watermark";
 import { Marquee } from "@/components/marquee";
 import type { ProductWithStock } from "@shared/schema";
 import { useAudio } from "@/lib/audio";
+import { useSEO } from "@/hooks/use-seo";
 
 export default function Home() {
+  useSEO({
+    title: "Resilient Official | Premium Streetwear",
+    description:
+      "Shop Resilient Official — premium streetwear crafted for those who refuse to conform. Exclusive limited drops, graphic tees, hoodies, and jackets.",
+    keywords:
+      "resilient official, premium streetwear, luxury streetwear, limited drops, graphic tees, hoodies, urban fashion, resilient clothing",
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "Resilient Official",
+      url: "https://resilientofficial.com",
+      logo: "https://resilientofficial.com/images/logo-icon.png",
+      sameAs: ["https://instagram.com/resilientofficial"],
+    },
+  });
+
   const { data: products } = useQuery<ProductWithStock[]>({
     queryKey: ["/api/products"],
   });

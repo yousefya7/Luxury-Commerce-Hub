@@ -1,8 +1,13 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
+import { useSEO } from "@/hooks/use-seo";
 
 export default function NotFound() {
+  useSEO({
+    title: "Page Not Found | Resilient Official",
+    description: "The page you're looking for doesn't exist. Head back to Resilient Official and explore our premium streetwear collection.",
+  });
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-6" data-testid="page-not-found">
       <div className="text-center max-w-md">

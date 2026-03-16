@@ -68,6 +68,48 @@ export async function registerRoutes(
     })
   );
 
+  app.get("/sitemap.xml", async (_req, res) => {
+    try {
+      const products = await storage.getAllProducts();
+      const base = "https://resilientofficial.com";
+      const now = new Date().toISOString().split("T")[0];
+
+      const staticPages = [
+        { url: `${base}/`, priority: "1.0", changefreq: "weekly" },
+        { url: `${base}/shop`, priority: "0.9", changefreq: "daily" },
+        { url: `${base}/gallery`, priority: "0.7", changefreq: "monthly" },
+      ];
+
+      const productPages = products.map((p) => ({
+        url: `${base}/product/${p.id}`,
+        priority: "0.8",
+        changefreq: "weekly",
+        lastmod: now,
+      }));
+
+      const allPages = [...staticPages, ...productPages];
+
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${allPages
+  .map(
+    (page) => `  <url>
+    <loc>${page.url}</loc>
+    <lastmod>${(page as any).lastmod || now}</lastmod>
+    <changefreq>${(page as any).changefreq}</changefreq>
+    <priority>${page.priority}</priority>
+  </url>`
+  )
+  .join("\n")}
+</urlset>`;
+
+      res.set("Content-Type", "application/xml");
+      res.send(xml);
+    } catch (err) {
+      res.status(500).send("Error generating sitemap");
+    }
+  });
+
   app.post("/api/auth/unlock", async (req, res) => {
     const { password } = req.body;
     const result = await pool.query("SELECT value FROM site_settings WHERE key = 'site_password'");

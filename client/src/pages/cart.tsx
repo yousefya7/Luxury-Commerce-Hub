@@ -3,8 +3,14 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Minus, Plus, X, ArrowRight } from "lucide-react";
 import { useCart } from "@/lib/cart";
+import { useSEO } from "@/hooks/use-seo";
 
 export default function CartPage() {
+  useSEO({
+    title: "Your Cart | Resilient Official",
+    description:
+      "Review your Resilient Official cart. Secure checkout with Apple Pay, card payments, and promo code support.",
+  });
   const { items, removeItem, updateQuantity, total } = useCart();
 
   return (

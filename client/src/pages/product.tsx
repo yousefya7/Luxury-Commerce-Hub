@@ -8,6 +8,7 @@ import { ArrowLeft, Minus, Plus, ChevronLeft, ChevronRight } from "lucide-react"
 import { useToast } from "@/hooks/use-toast";
 import { useCart } from "@/lib/cart";
 import type { ProductWithStock } from "@shared/schema";
+import { useSEO } from "@/hooks/use-seo";
 
 const SIZE_ORDER = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"];
 
@@ -37,6 +38,41 @@ export default function ProductPage() {
   const { toast } = useToast();
   const { addItem } = useCart();
 
+  const { data: product, isLoading } = useQuery<ProductWithStock>({
+    queryKey: ["/api/products", id],
+  });
+
+  useSEO({
+    title: product ? `${product.name} | Resilient Official` : "Product | Resilient Official",
+    description: product
+      ? `${product.description.slice(0, 155)}...`
+      : "Shop premium streetwear from Resilient Official. Limited drops, exclusive designs.",
+    ogImage: product?.images?.[0] || undefined,
+    ogType: "product",
+    keywords: product
+      ? `${product.name}, resilient official, ${product.category}, streetwear, premium streetwear`
+      : "resilient official, streetwear, premium clothing",
+    jsonLd: product
+      ? {
+          "@context": "https://schema.org",
+          "@type": "Product",
+          name: product.name,
+          image: product.images,
+          description: product.description,
+          brand: { "@type": "Brand", name: "Resilient Official" },
+          offers: {
+            "@type": "Offer",
+            price: product.price,
+            priceCurrency: "USD",
+            availability:
+              product.stock?.reduce((s, x) => s + x.quantity, 0) > 0
+                ? "https://schema.org/InStock"
+                : "https://schema.org/OutOfStock",
+          },
+        }
+      : undefined,
+  });
+
   const scrollToImage = useCallback((index: number) => {
     if (!carouselRef.current) return;
     const child = carouselRef.current.children[index] as HTMLElement;
@@ -61,10 +97,6 @@ export default function ProductPage() {
       thumb.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
     }
   }, [activeIndex]);
-
-  const { data: product, isLoading } = useQuery<ProductWithStock>({
-    queryKey: ["/api/products", id],
-  });
 
   if (isLoading) {
     return (
@@ -215,7 +247,7 @@ export default function ProductPage() {
                     }`}
                     data-testid={`button-thumbnail-${i}`}
                   >
-                    <img src={img} alt="" className="w-full h-full object-cover" draggable={false} />
+                    <img src={img} alt={`${product?.name || "Product"} — view ${i + 1}`} className="w-full h-full object-cover" draggable={false} loading="lazy" />
                   </button>
                 ))}
               </div>
