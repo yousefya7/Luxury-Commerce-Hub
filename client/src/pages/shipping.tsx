@@ -38,9 +38,9 @@ export default function ShippingPage() {
             <div className="flex items-start gap-4 mb-4">
               <Clock className="w-5 h-5 text-accent-blue mt-0.5 flex-shrink-0" />
               <div>
-                <h2 className="font-display text-sm tracking-luxury uppercase mb-3">Processing Time</h2>
+                <h2 className="font-display text-sm tracking-luxury uppercase mb-3">Regular Orders</h2>
                 <p className="text-muted-foreground text-sm font-mono leading-relaxed">
-                  All non-preorder orders are processed within <span className="text-white">1–3 business days</span> of being placed. Orders placed on weekends or holidays are processed the next business day.
+                  Regular orders may take some time to process before being shipped. Once your order has shipped you can expect delivery within <span className="text-white">3–5 business days</span>. You will receive a tracking number via email once your order is on its way.
                 </p>
               </div>
             </div>

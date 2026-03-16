@@ -1,0 +1,53 @@
+"Add three new informational pages to the website for Shipping, Returns, and Contact. All three are already linked in the footer under the INFO section. Here are the full requirements:
+
+Shipping Page (/shipping):
+
+Professional, on-brand page matching the rest of the site's design
+Include sections for:
+
+Preorders: "For preorder items, please allow up to 30 days for your order to be shipped. You will receive a tracking number via email once your order has been dispatched."
+Regular Orders: "Regular orders may take some time to process before being shipped. Once your order has shipped you can expect delivery within 3-5 business days. You will receive a tracking number via email once your order is on its way."
+Shipping carriers (USPS, UPS, FedEx)
+Order tracking — customers will receive tracking number via email once shipped
+A note that shipping times may vary during peak seasons and holidays
+
+
+
+
+Returns Page (/returns):
+
+Professional, on-brand page matching the rest of the site's design
+Display clearly and prominently:
+
+"All sales are final. We do not accept returns or exchanges."
+"If you have any issues with your order, please contact us at info@resilientofficial.com and we will do our best to assist you."
+
+
+Keep it simple, clean and straightforward
+No mention of return windows or refund processes since all sales are final
+
+
+Contact Page (/contact):
+
+Professional, on-brand page matching the rest of the site's design
+Include:
+
+A working contact form with fields for: Name, Email, Subject, Message and a Submit button
+When submitted, send the message to info@resilientofficial.com via the existing Resend integration
+Send the customer an automatic confirmation email saying their message was received and they will hear back within 24-48 hours
+Display the brand email info@resilientofficial.com on the page
+Display social media links (Instagram, TikTok)
+A friendly welcoming message at the top
+
+
+
+
+General requirements for all three pages:
+
+Match the existing site design — same fonts, colors, header, footer
+Fully mobile responsive
+Add proper SEO meta title and description to each page
+Make sure the footer links already pointing to these pages work correctly
+
+
+Do not break any existing pages or functionality — only add these three new pages"**
