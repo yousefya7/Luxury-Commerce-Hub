@@ -138,6 +138,7 @@ function PaymentForm({
             billing_details: {
               name: formData.name,
               email: formData.email,
+              phone: formData.phone || null,
               address: {
                 line1: formData.street,
                 city: formData.city,
@@ -234,19 +235,7 @@ function PaymentForm({
                 defaultCollapsed: false,
               },
               fields: {
-                billingDetails: {
-                  name: "never",
-                  email: "never",
-                  phone: "auto",
-                  address: {
-                    line1: "never",
-                    line2: "auto",
-                    city: "never",
-                    state: "never",
-                    postalCode: "never",
-                    country: "auto",
-                  },
-                },
+                billingDetails: "never",
               },
               wallets: {
                 applePay: "never",
