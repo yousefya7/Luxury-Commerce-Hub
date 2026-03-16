@@ -64,6 +64,14 @@ function LoadingBar({ visible }: { visible: boolean }) {
   );
 }
 
+function ScrollToTop() {
+  const [location] = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location]);
+  return null;
+}
+
 function NavigationLoadingBar() {
   const [location] = useLocation();
   const [visible, setVisible] = useState(false);
@@ -154,6 +162,7 @@ function AppInner() {
         <AudioProvider>
           <CartProvider>
             <GoogleAnalytics />
+            <ScrollToTop />
             <NoiseOverlay />
             <NavigationLoadingBar />
             <Navbar />
