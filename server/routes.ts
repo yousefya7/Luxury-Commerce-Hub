@@ -15,9 +15,9 @@ import { createPaymentIntent, createRefund, calculateTaxAmount, createStripeCoup
 import { insertPromoCodeSchema } from "@shared/schema";
 
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
+  cloud_name: process.env.CLOUDINARY_API_KEY,
+  api_key: process.env.CLOUDINARY_API_SECRET,
+  api_secret: process.env.CLOUDINARY_CLOUD_NAME,
 });
 
 const upload = multer({
@@ -928,11 +928,18 @@ ${allPages
       const imagePaths = existing.images || [];
       const deleted = await storage.deleteProduct(id);
 
-      const fs = await import("fs");
-      const path = await import("path");
-      const uploadsDir = path.default.resolve(process.cwd(), "uploads");
       for (const img of imagePaths) {
-        if (img.startsWith("/uploads/")) {
+        if (img.startsWith("https://res.cloudinary.com/")) {
+          const parts = img.split("/upload/");
+          if (parts[1]) {
+            const publicId = parts[1].replace(/^v\d+\//, "").replace(/\.[^.]+$/, "");
+            cloudinary.uploader.destroy(publicId).catch((e: any) =>
+              console.warn(`Failed to delete Cloudinary image ${publicId}:`, e?.message)
+            );
+          }
+        } else if (img.startsWith("/uploads/")) {
+          const fs = await import("fs");
+          const uploadsDir = path.default.resolve(process.cwd(), "uploads");
           const relativeName = img.slice("/uploads/".length);
           const resolved = path.default.resolve(uploadsDir, relativeName);
           if (resolved.startsWith(uploadsDir + path.default.sep)) {
