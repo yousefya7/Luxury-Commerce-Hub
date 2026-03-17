@@ -81,7 +81,7 @@ export async function calculateTaxAmount(
           amount: amountCents,
           reference: "order",
           tax_behavior: "exclusive",
-          tax_code: "txcd_33040023",
+          tax_code: "txcd_10000000",
         },
       ],
       customer_details: {
@@ -96,8 +96,13 @@ export async function calculateTaxAmount(
       },
     });
     return calculation.tax_amount_exclusive ?? 0;
-  } catch (e) {
-    console.warn("[Tax] Stripe Tax unavailable, using 0:", (e as any)?.message);
+  } catch (e: any) {
+    console.error("[Tax] Stripe Tax calculation failed:", {
+      message: e?.message,
+      type: e?.type,
+      code: e?.code,
+      param: e?.param,
+    });
     return 0;
   }
 }
