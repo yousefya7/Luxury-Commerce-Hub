@@ -6,6 +6,23 @@ function getStripeClient(): Stripe {
   return new Stripe(key, { apiVersion: "2025-01-27.acacia" });
 }
 
+let _stripeAccountChecked = false;
+export async function verifyStripeAccount(): Promise<void> {
+  if (_stripeAccountChecked) return;
+  _stripeAccountChecked = true;
+  try {
+    const stripe = getStripeClient();
+    const account = await stripe.accounts.retrieve();
+    const keyMode = process.env.STRIPE_SECRET_KEY?.startsWith("sk_live_") ? "LIVE" : "TEST";
+    console.log(`[Stripe] Account: ${account.id} (${keyMode} mode)`);
+    if (keyMode === "TEST") {
+      console.warn("[Stripe] WARNING: Using TEST secret key — payments and tax will not work in production.");
+    }
+  } catch (e: any) {
+    console.error("[Stripe] Account verification failed:", e?.message);
+  }
+}
+
 export async function createRefund(
   paymentIntentId: string
 ): Promise<{ id: string; method: "refund" | "cancel" }> {

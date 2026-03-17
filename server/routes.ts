@@ -10,7 +10,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { sendOrderConfirmationSms, sendWelcomeSms, blastSms, twilioConfigured } from "./sms";
 import { sendOrderConfirmationEmail, sendShippingEmail, sendCancellationEmail, blastEmail, sendContactEmail, sendContactConfirmationEmail, resendConfigured } from "./email";
-import { createPaymentIntent, createRefund, calculateTaxAmount, createStripeCoupon, deleteStripeCoupon } from "./stripe";
+import { createPaymentIntent, createRefund, calculateTaxAmount, createStripeCoupon, deleteStripeCoupon, verifyStripeAccount } from "./stripe";
 import { insertPromoCodeSchema } from "@shared/schema";
 
 const upload = multer({
@@ -51,6 +51,8 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   const PgStore = pgSession(session);
+
+  verifyStripeAccount().catch(() => {});
 
   app.use(
     session({
