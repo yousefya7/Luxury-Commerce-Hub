@@ -195,16 +195,16 @@ function PaymentForm({
         ev.complete("success");
 
         if (paymentIntent?.status === "requires_action") {
-          const { error: actionError, paymentIntent: updatedPI } = await stripe.confirmPayment({
+          const result = await stripe.confirmPayment({
             clientSecret,
             redirect: "if_required",
           });
-          if (actionError) {
-            toast({ title: "Payment Failed", description: actionError.message, variant: "destructive" });
+          if (result.error) {
+            toast({ title: "Payment Failed", description: result.error.message, variant: "destructive" });
             setPaying(false);
             return;
           }
-          if ((updatedPI as any)?.status === "succeeded") await createOrderRecord((updatedPI as any).id);
+          if (result.paymentIntent?.status === "succeeded") await createOrderRecord(result.paymentIntent.id);
           return;
         }
 
