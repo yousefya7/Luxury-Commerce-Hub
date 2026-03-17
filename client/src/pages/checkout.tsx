@@ -110,7 +110,16 @@ function PaymentForm({
   const { toast } = useToast();
   const [paying, setPaying] = useState(false);
   const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [paymentRequest, setPaymentRequest] = useState<any>(null);
+
+  useEffect(() => {
+    if (ready || loadError) return;
+    const timeout = setTimeout(() => {
+      setLoadError("The payment form took too long to load. Please go back and try again.");
+    }, 30000);
+    return () => clearTimeout(timeout);
+  }, [ready, loadError]);
 
   const createOrderRecord = useCallback(async (paymentIntentId: string) => {
     try {
@@ -294,19 +303,37 @@ function PaymentForm({
           <p className="text-[10px] tracking-[0.15em] uppercase font-bold text-accent-blue">Payment Details</p>
         </div>
         <div className="p-5">
-          <PaymentElement
-            onReady={() => setReady(true)}
-            options={{
-              layout: { type: "tabs", defaultCollapsed: false },
-              fields: { billingDetails: "never" },
-              wallets: { applePay: "never", googlePay: "never" },
-            }}
-          />
-          {!ready && (
-            <div className="flex items-center gap-2 py-8 justify-center">
-              <Loader2 className="w-4 h-4 animate-spin text-accent-blue" />
-              <span className="text-xs text-muted-foreground font-mono">Loading payment form...</span>
+          {loadError ? (
+            <div className="flex flex-col items-center gap-3 py-8 text-center" data-testid="payment-load-error">
+              <p className="text-sm text-red-400 font-mono">{loadError}</p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onBack}
+                className="border-2 text-xs tracking-luxury uppercase"
+                data-testid="button-retry-payment"
+              >
+                <ArrowLeft className="w-3 h-3 mr-2" /> Go Back & Try Again
+              </Button>
             </div>
+          ) : (
+            <>
+              <PaymentElement
+                onReady={() => setReady(true)}
+                onLoadError={(e) => setLoadError(e.error?.message || "Payment form failed to load. Please go back and try again.")}
+                options={{
+                  layout: { type: "tabs", defaultCollapsed: false },
+                  fields: { billingDetails: "never" },
+                  wallets: { applePay: "never", googlePay: "never" },
+                }}
+              />
+              {!ready && (
+                <div className="flex items-center gap-2 py-8 justify-center">
+                  <Loader2 className="w-4 h-4 animate-spin text-accent-blue" />
+                  <span className="text-xs text-muted-foreground font-mono">Loading payment form...</span>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -489,19 +516,9 @@ export default function CheckoutPage() {
       setStep("payment");
     } catch (err: any) {
       const msg: string = err?.message || "";
-      let isTaxError = false;
-      try {
-        const jsonPart = msg.includes(":") ? msg.substring(msg.indexOf(":") + 1).trim() : msg;
-        const parsed = JSON.parse(jsonPart);
-        if (parsed.taxError) isTaxError = true;
-      } catch {
-        isTaxError = msg.toLowerCase().includes("tax");
-      }
       toast({
-        title: isTaxError ? "Tax Calculation Issue" : "Error",
-        description: isTaxError
-          ? "We're unable to calculate sales tax for your address right now. Please try again later or contact support."
-          : (msg || "Could not initialize payment. Please try again."),
+        title: "Error",
+        description: msg || "Could not initialize payment. Please try again.",
         variant: "destructive",
       });
     }
@@ -742,10 +759,16 @@ export default function CheckoutPage() {
                     <span className="text-green-400 font-mono">−${breakdown.discountAmount.toFixed(2)}</span>
                   </div>
                 )}
-                {step === "payment" && breakdown.taxAmount > 0 && (
-                  <div className="flex justify-between text-sm">
+                {step === "info" && (
+                  <div className="flex justify-between text-sm" data-testid="text-tax-info">
                     <span className="text-muted-foreground font-mono">Tax</span>
-                    <span className="font-mono">${breakdown.taxAmount.toFixed(2)}</span>
+                    <span className="text-muted-foreground text-xs font-mono italic">Calculated at checkout</span>
+                  </div>
+                )}
+                {step === "payment" && (
+                  <div className="flex justify-between text-sm" data-testid="text-tax-payment">
+                    <span className="text-muted-foreground font-mono">Tax</span>
+                    <span className="font-mono">{breakdown.taxAmount > 0 ? `$${breakdown.taxAmount.toFixed(2)}` : "$0.00"}</span>
                   </div>
                 )}
 

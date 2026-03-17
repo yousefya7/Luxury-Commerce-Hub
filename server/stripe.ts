@@ -68,17 +68,6 @@ export async function deleteStripeCoupon(couponId: string): Promise<void> {
   }
 }
 
-export class TaxCalculationError extends Error {
-  public readonly stripeCode?: string;
-  public readonly stripeType?: string;
-  constructor(message: string, opts?: { code?: string; type?: string }) {
-    super(message);
-    this.name = "TaxCalculationError";
-    this.stripeCode = opts?.code;
-    this.stripeType = opts?.type;
-  }
-}
-
 export async function calculateTaxAmount(
   amountCents: number,
   address: { line1: string; city: string; state: string; postalCode: string }
@@ -101,7 +90,7 @@ export async function calculateTaxAmount(
           amount: amountCents,
           reference: "order",
           tax_behavior: "exclusive",
-          tax_code: "txcd_10000000",
+          tax_code: "txcd_10401000",
         },
       ],
       customer_details: {
@@ -129,17 +118,14 @@ export async function calculateTaxAmount(
 
     return taxAmount;
   } catch (e: any) {
-    console.error("[Tax] Stripe Tax calculation failed:", {
+    console.error("[Tax] Stripe Tax calculation failed — falling back to $0 tax:", {
       message: e?.message,
       type: e?.type,
       code: e?.code,
       param: e?.param,
       statusCode: e?.statusCode,
     });
-    throw new TaxCalculationError(
-      e?.message || "Tax calculation failed",
-      { code: e?.code, type: e?.type }
-    );
+    return 0;
   }
 }
 

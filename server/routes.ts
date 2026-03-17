@@ -10,7 +10,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { sendOrderConfirmationSms, sendWelcomeSms, blastSms, twilioConfigured } from "./sms";
 import { sendOrderConfirmationEmail, sendShippingEmail, sendCancellationEmail, blastEmail, sendContactEmail, sendContactConfirmationEmail, resendConfigured } from "./email";
-import { createPaymentIntent, createRefund, calculateTaxAmount, TaxCalculationError, createStripeCoupon, deleteStripeCoupon } from "./stripe";
+import { createPaymentIntent, createRefund, calculateTaxAmount, createStripeCoupon, deleteStripeCoupon } from "./stripe";
 import { insertPromoCodeSchema } from "@shared/schema";
 
 const upload = multer({
@@ -234,32 +234,16 @@ ${allPages
 
       let taxAmount = 0;
       if (shippingAddress?.street && shippingAddress?.city && shippingAddress?.state && shippingAddress?.zip) {
-        try {
-          const taxCents = await calculateTaxAmount(
-            Math.round(discountedSubtotal * 100),
-            {
-              line1: shippingAddress.street,
-              city: shippingAddress.city,
-              state: shippingAddress.state,
-              postalCode: shippingAddress.zip,
-            }
-          );
-          taxAmount = taxCents / 100;
-        } catch (taxErr: any) {
-          if (taxErr instanceof TaxCalculationError) {
-            console.error("[Checkout] Tax calculation failed for address:", {
-              state: shippingAddress.state,
-              zip: shippingAddress.zip,
-              error: taxErr.message,
-              stripeCode: taxErr.stripeCode,
-            });
-            return res.status(500).json({
-              message: "Tax calculation failed — please check your Stripe Tax configuration.",
-              taxError: true,
-            });
+        const taxCents = await calculateTaxAmount(
+          Math.round(discountedSubtotal * 100),
+          {
+            line1: shippingAddress.street,
+            city: shippingAddress.city,
+            state: shippingAddress.state,
+            postalCode: shippingAddress.zip,
           }
-          throw taxErr;
-        }
+        );
+        taxAmount = taxCents / 100;
       }
 
       const finalTotal = discountedSubtotal + taxAmount;
