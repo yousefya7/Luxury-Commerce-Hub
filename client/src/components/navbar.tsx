@@ -77,8 +77,8 @@ export default function Navbar() {
                 src="/images/logo-icon.png"
                 alt="Resilient"
                 className="w-8 h-8 object-contain"
-                animate={{ rotate: [-80, 80] }}
-                transition={{ duration: 1.8, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" }}
+                animate={{ rotate: 360 }}
+                transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
               />
               <span className={`font-display text-lg tracking-luxury uppercase ${
                 isHome && !scrolled ? "text-white" : ""
@@ -118,8 +118,8 @@ export default function Navbar() {
                     src="/images/logo-icon.png"
                     alt="Resilient"
                     className="w-8 h-8 object-contain"
-                    animate={{ rotate: [-80, 80] }}
-                    transition={{ duration: 1.8, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" }}
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
                   />
                   Resilient
                 </span>
