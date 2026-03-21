@@ -1,0 +1,63 @@
+"Sync all products from the admin panel to the Stripe Product Catalog and keep them in sync automatically. Here are the full requirements:
+Initial Sync — Add all existing products to Stripe:
+
+Go through every single product currently in the database/admin panel
+For each product create a corresponding product in the Stripe Product Catalog with:
+
+Product name
+Product description
+Product images
+Price in cents
+Tax code txcd_10401000 (clothing and apparel)
+All variants (sizes, colors) as separate Stripe prices if applicable
+
+
+Store the Stripe product ID and price ID back on the product record in the database so they stay linked
+Do not create duplicates — check if a Stripe product ID already exists on the record before creating
+
+
+
+Auto Sync on Product Updates:
+
+Whenever a product is updated in the admin panel (name, description, price, image, variants) automatically update the corresponding Stripe product and price
+If the price changes, create a new Stripe price (Stripe does not allow editing existing prices) and update the stored price ID in the database
+If the product image changes, update the image on the Stripe product
+
+
+
+Auto Sync on New Products:
+
+Whenever a new product is added in the admin panel, automatically create it in Stripe at the same time
+Save the returned Stripe product ID and price ID on the new product record immediately
+
+
+
+Auto Sync on Product Deletion:
+
+Whenever a product is deleted or marked as sold out in the admin panel, archive the corresponding product in Stripe
+Do not permanently delete from Stripe — just archive it so records are kept
+
+
+
+Admin Panel:
+
+Show the Stripe product ID on each product in the admin panel so it is easy to verify the link
+Add a "Sync to Stripe" button on each product for manual force sync if needed
+Add a "Sync All to Stripe" button at the top of the products page to manually trigger a full sync of all products at once
+
+
+
+Tax Code:
+
+Make sure every product synced to Stripe has the tax code txcd_10401000 set for automatic tax calculation
+
+
+
+Error Handling:
+
+If a Stripe sync fails for any reason, log the error and show a warning on that product in the admin panel
+Do not let a Stripe sync failure break the product save — always save to the database first then sync to Stripe
+
+
+
+Do not break any existing product management, Stripe payment, or checkout functionality — only add the sync layer on top"**
