@@ -146,6 +146,82 @@ export async function calculateTaxAmount(
   }
 }
 
+export async function syncProductToStripe(product: {
+  id: string;
+  name: string;
+  description: string;
+  price: string | number;
+  images: string[];
+  stripeProductId?: string | null;
+  stripePriceId?: string | null;
+}): Promise<{ stripeProductId: string; stripePriceId: string }> {
+  const stripe = getStripeClient();
+  const priceCents = Math.round(Number(product.price) * 100);
+
+  let stripeProductId = product.stripeProductId || null;
+  let stripePriceId = product.stripePriceId || null;
+
+  if (stripeProductId) {
+    await stripe.products.update(stripeProductId, {
+      name: product.name,
+      description: product.description || undefined,
+      images: product.images.slice(0, 8).filter(Boolean),
+      tax_code: "txcd_10401000",
+    });
+
+    let priceChanged = true;
+    if (stripePriceId) {
+      try {
+        const existingPrice = await stripe.prices.retrieve(stripePriceId);
+        priceChanged = existingPrice.unit_amount !== priceCents;
+      } catch {
+        priceChanged = true;
+      }
+    }
+
+    if (priceChanged) {
+      if (stripePriceId) {
+        await stripe.prices.update(stripePriceId, { active: false }).catch(() => {});
+      }
+      const newPrice = await stripe.prices.create({
+        product: stripeProductId,
+        unit_amount: priceCents,
+        currency: "usd",
+      });
+      stripePriceId = newPrice.id;
+    }
+  } else {
+    const stripeProduct = await stripe.products.create({
+      name: product.name,
+      description: product.description || undefined,
+      images: product.images.slice(0, 8).filter(Boolean),
+      tax_code: "txcd_10401000",
+      metadata: { resilientProductId: product.id },
+    });
+    stripeProductId = stripeProduct.id;
+
+    const stripePrice = await stripe.prices.create({
+      product: stripeProductId,
+      unit_amount: priceCents,
+      currency: "usd",
+    });
+    stripePriceId = stripePrice.id;
+  }
+
+  console.log(`[Stripe] Synced product "${product.name}" → ${stripeProductId} / ${stripePriceId}`);
+  return { stripeProductId, stripePriceId };
+}
+
+export async function archiveStripeProduct(stripeProductId: string): Promise<void> {
+  const stripe = getStripeClient();
+  try {
+    await stripe.products.update(stripeProductId, { active: false });
+    console.log(`[Stripe] Archived product ${stripeProductId}`);
+  } catch (e: any) {
+    console.warn(`[Stripe] Could not archive product ${stripeProductId}:`, e?.message);
+  }
+}
+
 export async function createPaymentIntent(
   amountDollars: number,
   metadata: Record<string, string> = {}

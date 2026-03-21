@@ -46,7 +46,7 @@ import {
   Package, Users, ShoppingCart, AlertTriangle,
   Download, DollarSign, Plus, Pencil, Trash2, X, Eye, EyeOff, Save, Upload, Loader2,
   CheckSquare, Square, Layers, Shield, Lock, Settings, GripVertical, Mail, Search, Phone, MapPin, Receipt,
-  Truck, ChevronDown, XCircle, RefreshCw
+  Truck, ChevronDown, XCircle, RefreshCw, Zap, Copy, TriangleAlert
 } from "lucide-react";
 import {
   Select,
@@ -1017,6 +1017,41 @@ export default function AdminDashboard() {
     },
   });
 
+  const syncAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/products/sync-all", {});
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Sync failed"); }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/dashboard"] });
+      const failed = data.failed || 0;
+      toast({
+        title: `Synced ${data.synced} product${data.synced !== 1 ? "s" : ""} to Stripe`,
+        description: failed > 0 ? `${failed} product${failed > 1 ? "s" : ""} failed — check server logs` : undefined,
+        variant: failed > 0 ? "destructive" : "default",
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Stripe Sync Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const syncProductMutation = useMutation({
+    mutationFn: async (productId: string) => {
+      const res = await apiRequest("POST", `/api/admin/products/${productId}/sync`, {});
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Sync failed"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/dashboard"] });
+      toast({ title: "Synced to Stripe" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Stripe Sync Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -1249,18 +1284,34 @@ export default function AdminDashboard() {
               <p className="text-sm text-muted-foreground font-mono">
                 {data?.products?.length || 0} products
               </p>
-              <Button
-                className="text-xs tracking-luxury uppercase btn-liquid no-default-hover-elevate no-default-active-elevate border-2 border-accent-blue bg-accent-blue text-white"
-                onClick={() => {
-                  setForm(EMPTY_FORM);
-                  setEditingId(null);
-                  setShowForm(true);
-                }}
-                data-testid="button-add-product"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Product
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  className="text-xs tracking-luxury uppercase border-2 border-border/50"
+                  onClick={() => syncAllMutation.mutate()}
+                  disabled={syncAllMutation.isPending}
+                  data-testid="button-sync-all-stripe"
+                >
+                  {syncAllMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Zap className="w-4 h-4 mr-2" />
+                  )}
+                  Sync All to Stripe
+                </Button>
+                <Button
+                  className="text-xs tracking-luxury uppercase btn-liquid no-default-hover-elevate no-default-active-elevate border-2 border-accent-blue bg-accent-blue text-white"
+                  onClick={() => {
+                    setForm(EMPTY_FORM);
+                    setEditingId(null);
+                    setShowForm(true);
+                  }}
+                  data-testid="button-add-product"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Product
+                </Button>
+              </div>
             </div>
 
             {(() => {
@@ -1376,6 +1427,24 @@ export default function AdminDashboard() {
                                   <div className="min-w-0">
                                     <p className="text-sm font-bold uppercase leading-tight">{product.name}</p>
                                     <p className="text-muted-foreground text-xs font-mono">${Number(product.price).toFixed(0)}</p>
+                                    {/* Stripe ID */}
+                                    {product.stripeProductId ? (
+                                      <button
+                                        className="flex items-center gap-1 text-[9px] font-mono text-accent-blue/70 hover:text-accent-blue transition-colors mt-0.5 group"
+                                        onClick={() => { navigator.clipboard.writeText(product.stripeProductId!); toast({ title: "Copied Stripe ID" }); }}
+                                        title={product.stripeProductId}
+                                        data-testid={`text-stripe-id-${product.id}`}
+                                      >
+                                        <Zap className="w-2.5 h-2.5" />
+                                        {product.stripeProductId.slice(0, 14)}…
+                                        <Copy className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                      </button>
+                                    ) : (
+                                      <span className="flex items-center gap-1 text-[9px] font-mono text-amber-500/80 mt-0.5" data-testid={`text-stripe-unsynced-${product.id}`}>
+                                        <TriangleAlert className="w-2.5 h-2.5" />
+                                        Not synced
+                                      </span>
+                                    )}
                                     {/* Status badge — mobile only, shown inline */}
                                     <div className="md:hidden mt-1">
                                       {!product.active ? (
@@ -1463,6 +1532,13 @@ export default function AdminDashboard() {
                                     </>
                                   ) : (
                                     <>
+                                      <Button size="sm" variant="outline" className="text-[10px] h-7 border-2"
+                                        onClick={() => syncProductMutation.mutate(product.id)}
+                                        disabled={syncProductMutation.isPending}
+                                        title="Sync to Stripe"
+                                        data-testid={`button-sync-stripe-${product.id}`}>
+                                        {syncProductMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                                      </Button>
                                       <Button size="sm" variant="outline" className="text-[10px] h-7 border-2"
                                         onClick={() => setEditingStock({ ...editingStock, [product.id]: { ...stockMap } })}
                                         data-testid={`button-edit-stock-${product.id}`}>

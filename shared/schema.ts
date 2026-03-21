@@ -13,6 +13,8 @@ export const products = pgTable("products", {
   featured: boolean("featured").default(false),
   active: boolean("active").default(true),
   displayOrder: integer("display_order").default(0).notNull(),
+  stripeProductId: text("stripe_product_id"),
+  stripePriceId: text("stripe_price_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
