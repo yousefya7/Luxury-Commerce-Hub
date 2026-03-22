@@ -43,10 +43,11 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
-  Package, Users, ShoppingCart, AlertTriangle,
+  Package, Users, ShoppingCart, ShoppingBag, AlertTriangle,
   Download, DollarSign, Plus, Pencil, Trash2, X, Eye, EyeOff, Save, Upload, Loader2,
   CheckSquare, Square, Layers, Shield, Lock, Settings, GripVertical, Mail, Search, Phone, MapPin, Receipt,
-  Truck, ChevronDown, XCircle, RefreshCw, Zap, Copy, TriangleAlert, Star, Image
+  Truck, ChevronDown, XCircle, RefreshCw, Zap, Copy, TriangleAlert, Star, Image, Megaphone,
+  LayoutDashboard, Menu, ArrowLeft, ArrowUpRight, BarChart3
 } from "lucide-react";
 import {
   Select,
@@ -76,7 +77,51 @@ type AdminData = {
 import { PromoCodesTab } from "./PromoCodesTab";
 import { NewArrivalsTab } from "./NewArrivalsTab";
 
-type Tab = "overview" | "inventory" | "customers" | "orders" | "categories" | "marketing" | "promo" | "settings" | "contacts" | "new-arrivals";
+type Tab = "overview" | "inventory" | "customers" | "orders" | "categories" | "marketing" | "promo" | "settings" | "contacts" | "new-arrivals" | "preorder" | "gallery" | "site-settings";
+
+type NavItem = { id: Tab; label: string; icon: React.ElementType };
+type NavGroup = { label: string; items: NavItem[] };
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "Overview",
+    items: [{ id: "overview", label: "Dashboard", icon: LayoutDashboard }],
+  },
+  {
+    label: "Orders",
+    items: [{ id: "orders", label: "All Orders", icon: ShoppingCart }],
+  },
+  {
+    label: "Customers",
+    items: [
+      { id: "customers", label: "Customers", icon: Users },
+      { id: "contacts", label: "Inquiries", icon: Mail },
+    ],
+  },
+  {
+    label: "Products",
+    items: [
+      { id: "inventory", label: "All Products", icon: Package },
+      { id: "new-arrivals", label: "New Arrivals", icon: Star },
+      { id: "categories", label: "Categories", icon: Layers },
+    ],
+  },
+  {
+    label: "Store",
+    items: [
+      { id: "preorder", label: "Preorder Mode", icon: AlertTriangle },
+      { id: "gallery", label: "Homepage Images", icon: Image },
+      { id: "site-settings", label: "General Settings", icon: Shield },
+    ],
+  },
+  {
+    label: "Marketing",
+    items: [
+      { id: "marketing", label: "Email Campaigns", icon: Mail },
+      { id: "promo", label: "Promo Codes", icon: Zap },
+    ],
+  },
+];
 
 type ProductForm = {
   name: string;
@@ -861,6 +906,7 @@ function MassEditModal({
 
 export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>("overview");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ProductForm>(EMPTY_FORM);
@@ -875,6 +921,13 @@ export default function AdminDashboard() {
   const [contactEmailSubject, setContactEmailSubject] = useState("");
   const [contactEmailMessage, setContactEmailMessage] = useState("");
   const { toast } = useToast();
+
+  const handleNewProduct = () => {
+    setTab("inventory");
+    setShowForm(true);
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+  };
 
   const { data, isLoading } = useQuery<AdminData>({
     queryKey: ["/api/admin/dashboard"],
@@ -1088,18 +1141,7 @@ export default function AdminDashboard() {
     }
   };
 
-  const tabs: { key: Tab; label: string }[] = [
-    { key: "overview", label: "Overview" },
-    { key: "inventory", label: "Inventory" },
-    { key: "new-arrivals", label: "New Arrivals" },
-    { key: "categories", label: "Categories" },
-    { key: "customers", label: "Customers" },
-    { key: "orders", label: "Orders" },
-    { key: "contacts", label: "Inquiries" },
-    { key: "marketing", label: "Marketing" },
-    { key: "promo", label: "Promo Codes" },
-    { key: "settings", label: "Settings" },
-  ];
+  const currentPageLabel = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.id === tab)?.label ?? "Dashboard";
 
   const handleExportCSV = () => {
     if (!data?.customers) return;
@@ -1167,10 +1209,18 @@ export default function AdminDashboard() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background p-6 pt-32">
-        <div className="max-w-7xl mx-auto space-y-6">
-          <Skeleton className="h-8 w-48" />
-          <div className="grid grid-cols-4 gap-4">
+      <div className="min-h-screen bg-background flex" style={{ paddingTop: "64px" }}>
+        <aside className="hidden md:flex fixed left-0 w-56 bg-[#080808] border-r-2 border-white/10 flex-col" style={{ top: "64px", height: "calc(100vh - 64px)" }}>
+          <div className="p-5 border-b border-white/10">
+            <Skeleton className="h-4 w-28" />
+          </div>
+          <div className="p-4 space-y-3">
+            {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-8 w-full opacity-30" />)}
+          </div>
+        </aside>
+        <div className="flex-1 md:ml-56 p-6 space-y-6">
+          <Skeleton className="h-10 w-48" />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28" />)}
           </div>
         </div>
@@ -1181,35 +1231,94 @@ export default function AdminDashboard() {
   const stats = data?.stats || { totalRevenue: 0, totalOrders: 0, totalCustomers: 0, lowStockAlerts: 0 };
 
   return (
-    <div className="min-h-screen bg-background" data-testid="page-admin-dashboard">
-      <div className="max-w-7xl mx-auto px-3 md:px-6 pt-32 pb-24">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-          <div>
-            <p className="text-accent-blue/70 text-xs font-mono tracking-luxury uppercase mb-2">
-              Admin
-            </p>
-            <h1 className="font-display text-3xl tracking-luxury uppercase">
-              Dashboard
-            </h1>
-          </div>
+    <div className="min-h-screen bg-background flex" style={{ paddingTop: "64px" }} data-testid="page-admin-dashboard">
+
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-40 md:hidden"
+          style={{ top: "64px" }}
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={`fixed left-0 z-40 w-56 bg-[#080808] border-r-2 border-white/10 flex flex-col transform transition-transform duration-300 ease-in-out ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
+        style={{ top: "64px", height: "calc(100vh - 64px)" }}
+      >
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10">
+          <span className="text-[9px] font-mono tracking-[0.2em] uppercase text-white/40">Admin Panel</span>
+          <button className="md:hidden text-white/40 hover:text-white/70" onClick={() => setSidebarOpen(false)}>
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
-        <div className="flex gap-5 mb-10 border-b-2 border-border/50 overflow-x-auto scrollbar-hide -mx-6 px-6 md:mx-0 md:px-0">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`flex-shrink-0 text-xs font-mono tracking-luxury uppercase pb-3 border-b-2 transition-colors whitespace-nowrap ${
-                tab === t.key
-                  ? "border-accent-blue text-accent-blue"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              data-testid={`tab-${t.key}`}
-            >
-              {t.label}
-            </button>
+        <nav className="flex-1 overflow-y-auto py-3 px-2">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label} className="mb-5">
+              <p className="text-[8px] font-mono tracking-[0.22em] uppercase text-white/25 px-3 mb-1.5">{group.label}</p>
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = tab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => { setTab(item.id); setSidebarOpen(false); }}
+                    className={`w-full flex items-center gap-2.5 px-3 py-[7px] text-[11px] font-mono tracking-wide transition-all text-left ${
+                      isActive
+                        ? "bg-accent-blue/12 text-accent-blue border-l-[2px] border-accent-blue"
+                        : "text-white/45 hover:text-white/80 hover:bg-white/5 border-l-[2px] border-transparent"
+                    }`}
+                    data-testid={`nav-${item.id}`}
+                  >
+                    <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
           ))}
+        </nav>
+
+        <div className="p-3 border-t border-white/10">
+          <a
+            href="/"
+            className="flex items-center gap-2 px-3 py-2 text-[11px] font-mono text-white/35 hover:text-white/65 transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Back to Store
+          </a>
         </div>
+      </aside>
+
+      {/* Main content */}
+      <div className="flex-1 min-w-0 flex flex-col md:ml-56">
+
+        {/* Sub-header */}
+        <div className="sticky top-16 z-30 bg-background/95 backdrop-blur-sm border-b-2 border-border/25 px-4 md:px-6 py-3 flex items-center gap-3">
+          <button
+            className="md:hidden text-muted-foreground hover:text-foreground mr-1"
+            onClick={() => setSidebarOpen(true)}
+            data-testid="button-mobile-menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <h1 className="font-display text-sm md:text-base tracking-luxury uppercase flex-1">{currentPageLabel}</h1>
+          <Button
+            size="sm"
+            onClick={handleNewProduct}
+            className="bg-accent-blue hover:bg-accent-blue/90 text-white text-xs tracking-luxury uppercase border-0 h-8 px-3"
+            data-testid="button-header-add-product"
+          >
+            <Plus className="w-3.5 h-3.5 mr-1.5" />
+            <span className="hidden sm:inline">New Product</span>
+            <span className="sm:hidden">Add</span>
+          </Button>
+        </div>
+
+        {/* Page content */}
+        <div className="flex-1 p-4 md:p-6 pb-20">
 
         {tab === "overview" && (
           <motion.div
@@ -1262,6 +1371,44 @@ export default function AdminDashboard() {
                   </p>
                 </CardContent>
               </Card>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-mono tracking-luxury uppercase text-muted-foreground mb-4">Quick Actions</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-8">
+                <button
+                  onClick={handleNewProduct}
+                  className="flex items-center gap-2 px-3 py-2.5 border-2 border-border/40 hover:border-accent-blue/60 hover:bg-accent-blue/5 transition-colors text-xs font-mono tracking-luxury uppercase text-muted-foreground hover:text-foreground"
+                  data-testid="button-quick-add-product"
+                >
+                  <Plus className="w-3.5 h-3.5 text-accent-blue" />
+                  Add Product
+                </button>
+                <button
+                  onClick={() => setTab("orders")}
+                  className="flex items-center gap-2 px-3 py-2.5 border-2 border-border/40 hover:border-accent-blue/60 hover:bg-accent-blue/5 transition-colors text-xs font-mono tracking-luxury uppercase text-muted-foreground hover:text-foreground"
+                  data-testid="button-quick-view-orders"
+                >
+                  <ShoppingBag className="w-3.5 h-3.5 text-accent-blue" />
+                  View Orders
+                </button>
+                <button
+                  onClick={() => setTab("preorder")}
+                  className="flex items-center gap-2 px-3 py-2.5 border-2 border-border/40 hover:border-accent-blue/60 hover:bg-accent-blue/5 transition-colors text-xs font-mono tracking-luxury uppercase text-muted-foreground hover:text-foreground"
+                  data-testid="button-quick-preorder"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                  Preorder
+                </button>
+                <button
+                  onClick={() => setTab("marketing")}
+                  className="flex items-center gap-2 px-3 py-2.5 border-2 border-border/40 hover:border-accent-blue/60 hover:bg-accent-blue/5 transition-colors text-xs font-mono tracking-luxury uppercase text-muted-foreground hover:text-foreground"
+                  data-testid="button-quick-marketing"
+                >
+                  <Megaphone className="w-3.5 h-3.5 text-accent-blue" />
+                  Marketing
+                </button>
+              </div>
             </div>
 
             <div>
@@ -2167,7 +2314,11 @@ export default function AdminDashboard() {
 
         {tab === "promo" && <PromoCodesTab />}
 
-        {tab === "settings" && <SettingsPanel />}
+        {tab === "settings" && <SettingsPanel section="all" />}
+        {tab === "preorder" && <SettingsPanel section="preorder" />}
+        {tab === "gallery" && <SettingsPanel section="gallery" />}
+        {tab === "site-settings" && <SettingsPanel section="site-settings" />}
+        </div>
       </div>
 
       <AnimatePresence>
@@ -2974,7 +3125,7 @@ function MarketingPanel() {
   );
 }
 
-function SettingsPanel() {
+function SettingsPanel({ section = "all" }: { section?: "all" | "preorder" | "gallery" | "site-settings" }) {
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
@@ -3064,7 +3215,7 @@ function SettingsPanel() {
       className="space-y-6"
     >
       {/* Preorder Mode */}
-      <div className="border-2 border-border/30 bg-[hsl(0_0%_5%)]" data-testid="section-preorder">
+      <div className="border-2 border-border/30 bg-[hsl(0_0%_5%)]" data-testid="section-preorder" style={{ display: section !== "all" && section !== "preorder" ? "none" : undefined }}>
         <div className="flex items-center gap-3 px-6 py-4 border-b-2 border-border/30 bg-[hsl(0_0%_6%)]">
           <AlertTriangle className="w-4 h-4 text-amber-400" />
           <h3 className="font-display text-sm tracking-luxury uppercase">Preorder Mode</h3>
@@ -3156,7 +3307,7 @@ function SettingsPanel() {
       </div>
 
       {/* Gallery Images */}
-      <div className="border-2 border-border/30 bg-[hsl(0_0%_5%)]" data-testid="section-gallery-images">
+      <div className="border-2 border-border/30 bg-[hsl(0_0%_5%)]" data-testid="section-gallery-images" style={{ display: section !== "all" && section !== "gallery" ? "none" : undefined }}>
         <div className="flex items-center gap-3 px-6 py-4 border-b-2 border-border/30 bg-[hsl(0_0%_6%)]">
           <Image className="w-4 h-4 text-accent-blue" />
           <h3 className="font-display text-sm tracking-luxury uppercase">Homepage Photo Grid</h3>
@@ -3211,7 +3362,7 @@ function SettingsPanel() {
       </div>
 
       {/* Site Access Controls */}
-      <div className="border-2 border-border/30 bg-[hsl(0_0%_5%)]" data-testid="section-site-access">
+      <div className="border-2 border-border/30 bg-[hsl(0_0%_5%)]" data-testid="section-site-access" style={{ display: section !== "all" && section !== "site-settings" ? "none" : undefined }}>
         <div className="flex items-center gap-3 px-6 py-4 border-b-2 border-border/30 bg-[hsl(0_0%_6%)]">
           <Shield className="w-4 h-4 text-accent-blue" />
           <h3 className="font-display text-sm tracking-luxury uppercase">Site Access Controls</h3>
