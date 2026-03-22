@@ -1046,7 +1046,7 @@ export default function AdminDashboard() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/dashboard"] });
       toast({
-        title: `Archived ${data.archived} duplicate Stripe product${data.archived !== 1 ? "s" : ""}`,
+        title: `Deleted ${data.archived} duplicate Stripe product${data.archived !== 1 ? "s" : ""}`,
         description: `${data.validKept} current product${data.validKept !== 1 ? "s" : ""} kept`,
       });
     },

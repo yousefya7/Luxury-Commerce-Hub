@@ -1093,10 +1093,18 @@ ${allPages
 
         for (const sp of page.data) {
           if (!validIds.has(sp.id)) {
-            await stripeClient.products.update(sp.id, { active: false });
+            // Deactivate all prices first (required before deletion)
+            const prices = await stripeClient.prices.list({ product: sp.id, limit: 100 });
+            for (const price of prices.data) {
+              if (price.active) {
+                await stripeClient.prices.update(price.id, { active: false }).catch(() => {});
+              }
+            }
+            // Delete the product
+            await stripeClient.products.del(sp.id);
             archived++;
-            report.push(`Archived orphan: ${sp.id} ("${sp.name}")`);
-            console.log(`[Stripe Cleanup] Archived orphan: ${sp.id} ("${sp.name}")`);
+            report.push(`Deleted: ${sp.id} ("${sp.name}")`);
+            console.log(`[Stripe Cleanup] Deleted: ${sp.id} ("${sp.name}")`);
           }
         }
 
