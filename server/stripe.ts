@@ -161,7 +161,25 @@ export async function syncProductToStripe(product: {
   let stripeProductId = product.stripeProductId || null;
   let stripePriceId = product.stripePriceId || null;
 
+  // If no Stripe ID stored, search Stripe by metadata before creating to prevent duplicates
+  if (!stripeProductId) {
+    try {
+      const search = await stripe.products.search({
+        query: `metadata["resilientProductId"]:"${product.id}"`,
+        limit: 5,
+      });
+      const existing = search.data.find((p) => p.active);
+      if (existing) {
+        stripeProductId = existing.id;
+        console.log(`[Stripe] Found existing product for "${product.name}" via metadata: ${stripeProductId}`);
+      }
+    } catch (e: any) {
+      console.warn(`[Stripe] Metadata search failed for "${product.name}":`, e?.message);
+    }
+  }
+
   if (stripeProductId) {
+    // Update existing Stripe product
     await stripe.products.update(stripeProductId, {
       name: product.name,
       description: product.description || undefined,
@@ -174,6 +192,17 @@ export async function syncProductToStripe(product: {
       try {
         const existingPrice = await stripe.prices.retrieve(stripePriceId);
         priceChanged = existingPrice.unit_amount !== priceCents;
+      } catch {
+        priceChanged = true;
+      }
+    } else {
+      // Look for an active price on this product
+      try {
+        const prices = await stripe.prices.list({ product: stripeProductId, active: true, limit: 1 });
+        if (prices.data[0] && prices.data[0].unit_amount === priceCents) {
+          stripePriceId = prices.data[0].id;
+          priceChanged = false;
+        }
       } catch {
         priceChanged = true;
       }
@@ -191,6 +220,7 @@ export async function syncProductToStripe(product: {
       stripePriceId = newPrice.id;
     }
   } else {
+    // Create brand-new Stripe product
     const stripeProduct = await stripe.products.create({
       name: product.name,
       description: product.description || undefined,

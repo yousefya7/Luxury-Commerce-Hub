@@ -770,23 +770,33 @@ ${allPages
         }
       }
 
+      // Sync to Stripe synchronously so ID is persisted before responding
+      try {
+        const { stripeProductId, stripePriceId, syncedAt } = await syncProductToStripe({
+          id: product.id,
+          name: product.name,
+          description: product.description,
+          price: product.price,
+          images: product.images,
+          stripeProductId: null,
+          stripePriceId: null,
+        });
+        await storage.updateProduct(product.id, {
+          stripeProductId,
+          stripePriceId,
+          stripeSyncError: null,
+          stripeLastSyncedAt: syncedAt,
+        });
+      } catch (e: any) {
+        console.error(`[Stripe] Sync failed for new product "${product.name}":`, e?.message);
+        await storage.updateProduct(product.id, {
+          stripeSyncError: e?.message || "Sync failed",
+          stripeLastSyncedAt: new Date(),
+        }).catch(() => {});
+      }
+
       const fullProduct = await storage.getProduct(product.id);
       res.json(fullProduct);
-
-      // Sync to Stripe async — don't block response
-      syncProductToStripe({
-        id: product.id,
-        name: product.name,
-        description: product.description,
-        price: product.price,
-        images: product.images,
-        stripeProductId: null,
-        stripePriceId: null,
-      }).then(({ stripeProductId, stripePriceId }) => {
-        storage.updateProduct(product.id, { stripeProductId, stripePriceId }).catch(() => {});
-      }).catch((e) => {
-        console.error(`[Stripe] Sync failed for new product "${product.name}":`, e?.message);
-      });
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to create product" });
     }
@@ -919,24 +929,36 @@ ${allPages
       }
 
       const updated = await storage.getProduct(id);
-      res.json(updated);
 
-      // Sync to Stripe async — don't block response
+      // Sync to Stripe synchronously so ID is persisted before responding
       if (updated) {
-        syncProductToStripe({
-          id: updated.id,
-          name: updated.name,
-          description: updated.description,
-          price: updated.price,
-          images: updated.images,
-          stripeProductId: updated.stripeProductId,
-          stripePriceId: updated.stripePriceId,
-        }).then(({ stripeProductId, stripePriceId }) => {
-          storage.updateProduct(updated.id, { stripeProductId, stripePriceId }).catch(() => {});
-        }).catch((e) => {
-          console.error(`[Stripe] Sync failed for product "${updated.name}":`, e?.message);
-        });
+        try {
+          const { stripeProductId, stripePriceId, syncedAt } = await syncProductToStripe({
+            id: updated.id,
+            name: updated.name,
+            description: updated.description,
+            price: updated.price,
+            images: updated.images,
+            stripeProductId: updated.stripeProductId,
+            stripePriceId: updated.stripePriceId,
+          });
+          await storage.updateProduct(updated.id, {
+            stripeProductId,
+            stripePriceId,
+            stripeSyncError: null,
+            stripeLastSyncedAt: syncedAt,
+          });
+        } catch (e: any) {
+          console.error(`[Stripe] Sync failed for product "${updated?.name}":`, e?.message);
+          await storage.updateProduct(id, {
+            stripeSyncError: e?.message || "Sync failed",
+            stripeLastSyncedAt: new Date(),
+          }).catch(() => {});
+        }
       }
+
+      const final = await storage.getProduct(id);
+      res.json(final);
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to update product" });
     }
@@ -949,7 +971,7 @@ ${allPages
 
       for (const product of allProducts) {
         try {
-          const { stripeProductId, stripePriceId } = await syncProductToStripe({
+          const { stripeProductId, stripePriceId, syncedAt } = await syncProductToStripe({
             id: product.id,
             name: product.name,
             description: product.description,
@@ -958,10 +980,19 @@ ${allPages
             stripeProductId: product.stripeProductId,
             stripePriceId: product.stripePriceId,
           });
-          await storage.updateProduct(product.id, { stripeProductId, stripePriceId });
+          await storage.updateProduct(product.id, {
+            stripeProductId,
+            stripePriceId,
+            stripeSyncError: null,
+            stripeLastSyncedAt: syncedAt,
+          });
           results.push({ id: product.id, name: product.name, stripeProductId, stripePriceId });
         } catch (e: any) {
           console.error(`[Stripe] Sync failed for "${product.name}":`, e?.message);
+          await storage.updateProduct(product.id, {
+            stripeSyncError: e?.message || "Sync failed",
+            stripeLastSyncedAt: new Date(),
+          }).catch(() => {});
           results.push({ id: product.id, name: product.name, error: e?.message || "Sync failed" });
         }
       }
@@ -974,13 +1005,70 @@ ${allPages
     }
   });
 
+  app.post("/api/admin/products/deduplicate-stripe", requireAdmin, async (req, res) => {
+    try {
+      const stripe = (await import("stripe")).default;
+      const stripeClient = new stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2025-01-27.acacia" });
+      const allProducts = await storage.getAllProducts();
+
+      let archived = 0;
+      let repaired = 0;
+      const report: string[] = [];
+
+      for (const product of allProducts) {
+        // Search Stripe for all products matching this product's ID in metadata
+        const search = await stripeClient.products.search({
+          query: `metadata["resilientProductId"]:"${product.id}"`,
+          limit: 10,
+        });
+
+        const matches = search.data;
+        if (matches.length === 0) continue;
+
+        // Sort newest first (Stripe returns newest first by default, but sort by created just in case)
+        const sorted = matches.sort((a, b) => b.created - a.created);
+        const keeper = sorted[0];
+        const dupes = sorted.slice(1);
+
+        // Archive duplicates
+        for (const dupe of dupes) {
+          if (dupe.active) {
+            await stripeClient.products.update(dupe.id, { active: false });
+            archived++;
+            report.push(`Archived dupe ${dupe.id} for "${product.name}"`);
+          }
+        }
+
+        // Ensure DB has the correct Stripe product ID
+        if (product.stripeProductId !== keeper.id) {
+          // Find the active price for the keeper
+          const prices = await stripeClient.prices.list({ product: keeper.id, active: true, limit: 1 });
+          const priceId = prices.data[0]?.id || product.stripePriceId;
+          await storage.updateProduct(product.id, {
+            stripeProductId: keeper.id,
+            stripePriceId: priceId ?? undefined,
+            stripeSyncError: null,
+          });
+          repaired++;
+          report.push(`Repaired DB for "${product.name}": set stripeProductId=${keeper.id}`);
+        }
+      }
+
+      report.forEach((line) => console.log("[Stripe Dedup]", line));
+      res.json({ archived, repaired, report });
+    } catch (err: any) {
+      console.error("[Stripe Dedup] Failed:", err?.message);
+      res.status(500).json({ message: err.message || "Deduplication failed" });
+    }
+  });
+
   app.post("/api/admin/products/:id/sync", requireAdmin, async (req, res) => {
     try {
       const id = req.params.id as string;
       const product = await storage.getProduct(id);
       if (!product) return res.status(404).json({ message: "Product not found" });
 
-      const { stripeProductId, stripePriceId } = await syncProductToStripe({
+      const { stripeProductId, stripePriceId, syncedAt } = await syncProductToStripe({
         id: product.id,
         name: product.name,
         description: product.description,
@@ -989,11 +1077,24 @@ ${allPages
         stripeProductId: product.stripeProductId,
         stripePriceId: product.stripePriceId,
       });
-      await storage.updateProduct(id, { stripeProductId, stripePriceId });
+      await storage.updateProduct(id, {
+        stripeProductId,
+        stripePriceId,
+        stripeSyncError: null,
+        stripeLastSyncedAt: syncedAt,
+      });
       const updated = await storage.getProduct(id);
       res.json({ success: true, stripeProductId, stripePriceId, product: updated });
     } catch (err: any) {
       console.error(`[Stripe] Manual sync failed:`, err?.message);
+      // Persist the error so admin can see it in the UI
+      const product = await storage.getProduct(req.params.id as string).catch(() => null);
+      if (product) {
+        await storage.updateProduct(req.params.id as string, {
+          stripeSyncError: err?.message || "Sync failed",
+          stripeLastSyncedAt: new Date(),
+        }).catch(() => {});
+      }
       res.status(500).json({ message: err.message || "Sync failed" });
     }
   });
@@ -1021,9 +1122,9 @@ ${allPages
         return res.status(404).json({ message: "Product not found" });
       }
 
-      // Archive in Stripe before deleting
+      // Archive in Stripe before deleting (awaited for correctness)
       if (existing.stripeProductId) {
-        archiveStripeProduct(existing.stripeProductId).catch(() => {});
+        await archiveStripeProduct(existing.stripeProductId);
       }
 
       const imagePaths = existing.images || [];

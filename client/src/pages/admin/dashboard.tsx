@@ -1427,12 +1427,21 @@ export default function AdminDashboard() {
                                   <div className="min-w-0">
                                     <p className="text-sm font-bold uppercase leading-tight">{product.name}</p>
                                     <p className="text-muted-foreground text-xs font-mono">${Number(product.price).toFixed(0)}</p>
-                                    {/* Stripe ID */}
-                                    {product.stripeProductId ? (
+                                    {/* Stripe sync status */}
+                                    {product.stripeSyncError ? (
+                                      <span
+                                        className="flex items-center gap-1 text-[9px] font-mono text-red-400 mt-0.5 cursor-help"
+                                        title={product.stripeSyncError}
+                                        data-testid={`text-stripe-error-${product.id}`}
+                                      >
+                                        <TriangleAlert className="w-2.5 h-2.5 flex-shrink-0" />
+                                        Sync error
+                                      </span>
+                                    ) : product.stripeProductId ? (
                                       <button
                                         className="flex items-center gap-1 text-[9px] font-mono text-accent-blue/70 hover:text-accent-blue transition-colors mt-0.5 group"
                                         onClick={() => { navigator.clipboard.writeText(product.stripeProductId!); toast({ title: "Copied Stripe ID" }); }}
-                                        title={product.stripeProductId}
+                                        title={`${product.stripeProductId}${product.stripeLastSyncedAt ? "\nLast synced: " + new Date(product.stripeLastSyncedAt).toLocaleString() : ""}`}
                                         data-testid={`text-stripe-id-${product.id}`}
                                       >
                                         <Zap className="w-2.5 h-2.5" />
