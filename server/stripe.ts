@@ -161,8 +161,63 @@ export async function syncProductToStripe(product: {
   let stripeProductId = product.stripeProductId || null;
   let stripePriceId = product.stripePriceId || null;
 
-  // If no Stripe ID stored, search Stripe by metadata before creating to prevent duplicates
+  if (stripeProductId) {
+    // Try to update the existing Stripe product.
+    // If the stored ID no longer exists (e.g. stale production DB, deleted in Stripe),
+    // clear it so we fall through to the create path below.
+    try {
+      await stripe.products.update(stripeProductId, {
+        name: product.name,
+        description: product.description || undefined,
+        images: product.images.slice(0, 8).filter(Boolean),
+        tax_code: "txcd_10401000",
+      });
+
+      let priceChanged = true;
+      if (stripePriceId) {
+        try {
+          const existingPrice = await stripe.prices.retrieve(stripePriceId);
+          priceChanged = existingPrice.unit_amount !== priceCents;
+        } catch {
+          priceChanged = true;
+        }
+      } else {
+        // Look for an active price on this product
+        try {
+          const prices = await stripe.prices.list({ product: stripeProductId, active: true, limit: 1 });
+          if (prices.data[0] && prices.data[0].unit_amount === priceCents) {
+            stripePriceId = prices.data[0].id;
+            priceChanged = false;
+          }
+        } catch {
+          priceChanged = true;
+        }
+      }
+
+      if (priceChanged) {
+        if (stripePriceId) {
+          await stripe.prices.update(stripePriceId, { active: false }).catch(() => {});
+        }
+        const newPrice = await stripe.prices.create({
+          product: stripeProductId,
+          unit_amount: priceCents,
+          currency: "usd",
+        });
+        stripePriceId = newPrice.id;
+      }
+    } catch (e: any) {
+      const isGone = e?.code === "resource_missing" || e?.message?.includes("No such product");
+      if (!isGone) throw e;
+      // Stored Stripe product ID is stale — clear and fall through to create path
+      console.warn(`[Stripe] Stored product ID ${stripeProductId} not found in Stripe — will create fresh. (${e?.message})`);
+      stripeProductId = null;
+      stripePriceId = null;
+    }
+  }
+
   if (!stripeProductId) {
+    // No valid Stripe product yet — search by metadata first to avoid duplicates,
+    // then create if still not found.
     try {
       const search = await stripe.products.search({
         query: `metadata["resilientProductId"]:"${product.id}"`,
@@ -176,73 +231,53 @@ export async function syncProductToStripe(product: {
     } catch (e: any) {
       console.warn(`[Stripe] Metadata search failed for "${product.name}":`, e?.message);
     }
-  }
 
-  if (stripeProductId) {
-    // Update existing Stripe product
-    await stripe.products.update(stripeProductId, {
-      name: product.name,
-      description: product.description || undefined,
-      images: product.images.slice(0, 8).filter(Boolean),
-      tax_code: "txcd_10401000",
-    });
-
-    let priceChanged = true;
-    if (stripePriceId) {
-      try {
-        const existingPrice = await stripe.prices.retrieve(stripePriceId);
-        priceChanged = existingPrice.unit_amount !== priceCents;
-      } catch {
-        priceChanged = true;
-      }
-    } else {
-      // Look for an active price on this product
+    if (stripeProductId) {
+      // Found via metadata — update it and reconcile price
+      await stripe.products.update(stripeProductId, {
+        name: product.name,
+        description: product.description || undefined,
+        images: product.images.slice(0, 8).filter(Boolean),
+        tax_code: "txcd_10401000",
+      });
       try {
         const prices = await stripe.prices.list({ product: stripeProductId, active: true, limit: 1 });
         if (prices.data[0] && prices.data[0].unit_amount === priceCents) {
           stripePriceId = prices.data[0].id;
-          priceChanged = false;
+        } else {
+          if (stripePriceId) await stripe.prices.update(stripePriceId, { active: false }).catch(() => {});
+          const newPrice = await stripe.prices.create({ product: stripeProductId, unit_amount: priceCents, currency: "usd" });
+          stripePriceId = newPrice.id;
         }
       } catch {
-        priceChanged = true;
+        const newPrice = await stripe.prices.create({ product: stripeProductId, unit_amount: priceCents, currency: "usd" });
+        stripePriceId = newPrice.id;
       }
-    }
+    } else {
+      // Create brand-new Stripe product
+      const stripeProduct = await stripe.products.create({
+        name: product.name,
+        description: product.description || undefined,
+        images: product.images.slice(0, 8).filter(Boolean),
+        tax_code: "txcd_10401000",
+        metadata: { resilientProductId: product.id },
+      });
+      stripeProductId = stripeProduct.id;
 
-    if (priceChanged) {
-      if (stripePriceId) {
-        await stripe.prices.update(stripePriceId, { active: false }).catch(() => {});
+      // Persist stripeProductId to DB immediately before price creation.
+      // If price creation fails below, the next sync will find this product
+      // via stripeProductId (or metadata search) and reuse it — no duplicate.
+      if (onProductCreated) {
+        await onProductCreated(stripeProductId);
       }
-      const newPrice = await stripe.prices.create({
+
+      const stripePrice = await stripe.prices.create({
         product: stripeProductId,
         unit_amount: priceCents,
         currency: "usd",
       });
-      stripePriceId = newPrice.id;
+      stripePriceId = stripePrice.id;
     }
-  } else {
-    // Create brand-new Stripe product
-    const stripeProduct = await stripe.products.create({
-      name: product.name,
-      description: product.description || undefined,
-      images: product.images.slice(0, 8).filter(Boolean),
-      tax_code: "txcd_10401000",
-      metadata: { resilientProductId: product.id },
-    });
-    stripeProductId = stripeProduct.id;
-
-    // Persist stripeProductId to DB immediately before price creation.
-    // If price creation fails below, the next sync will find this product
-    // via stripeProductId (or metadata search) and reuse it — no duplicate.
-    if (onProductCreated) {
-      await onProductCreated(stripeProductId);
-    }
-
-    const stripePrice = await stripe.prices.create({
-      product: stripeProductId,
-      unit_amount: priceCents,
-      currency: "usd",
-    });
-    stripePriceId = stripePrice.id;
   }
 
   const syncedAt = new Date();
