@@ -922,6 +922,20 @@ ${allPages
     }
   });
 
+  app.post("/api/admin/upload-multiple", requireAdmin, upload.array("images", 20), async (req, res) => {
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files || files.length === 0) {
+      return res.status(400).json({ message: "No files uploaded" });
+    }
+    try {
+      const urls = await Promise.all(files.map((f) => uploadToCloudinary(f.buffer)));
+      res.json({ urls });
+    } catch (err: any) {
+      console.error("[Upload] Cloudinary multi-upload failed:", err?.message);
+      res.status(500).json({ message: "Image upload failed" });
+    }
+  });
+
   app.post("/api/admin/products", requireAdmin, async (req, res) => {
     try {
       const parsed = insertProductSchema.safeParse(req.body);

@@ -250,33 +250,35 @@ function SortableImageItem({
     <div
       ref={setNodeRef}
       style={style as React.CSSProperties}
-      className="relative group"
+      {...attributes}
+      {...listeners}
+      className={`relative group cursor-grab active:cursor-grabbing touch-none select-none ${isDragging ? "ring-2 ring-accent-blue" : ""}`}
       data-testid={`image-thumbnail-${index}`}
+      title="Drag to reorder"
     >
       <div className={`w-24 h-24 border-2 overflow-hidden bg-muted ${isFirst ? "border-accent-blue" : "border-input"}`}>
-        <img src={url} alt="" className="w-full h-full object-cover" draggable={false} />
+        <img src={url} alt="" className="w-full h-full object-cover pointer-events-none" draggable={false} />
       </div>
+
       {isFirst && (
-        <div className="absolute bottom-0 left-0 right-0 bg-accent-blue text-white text-[9px] font-mono text-center py-0.5 tracking-luxury uppercase">
-          Hero
+        <div className="absolute bottom-0 left-0 right-0 bg-accent-blue text-white text-[9px] font-mono text-center py-0.5 tracking-luxury uppercase flex items-center justify-center gap-0.5">
+          <span>★</span> Primary
         </div>
       )}
+
       <button
-        {...attributes}
-        {...listeners}
-        className="absolute top-1 left-1 bg-black/60 text-white w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing touch-none"
-        data-testid={`button-drag-image-${index}`}
-        title="Drag to reorder"
-      >
-        <GripVertical className="w-3 h-3" />
-      </button>
-      <button
-        onClick={onRemove}
-        className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+        onClick={(e) => { e.stopPropagation(); onRemove(); }}
+        onPointerDown={(e) => e.stopPropagation()}
+        className="absolute top-1 right-1 bg-red-600 text-white w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 cursor-pointer"
         data-testid={`button-remove-image-${index}`}
+        title="Remove image"
       >
         <X className="w-3 h-3" />
       </button>
+
+      <div className="absolute top-1 left-1 bg-black/50 text-white w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+        <GripVertical className="w-3 h-3" />
+      </div>
     </div>
   );
 }
@@ -289,6 +291,8 @@ function ImageGalleryInput({
   onChange: (newImages: string[]) => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -297,12 +301,14 @@ function ImageGalleryInput({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const handleFileUpload = async (file: File) => {
+  const uploadFiles = async (files: File[]) => {
+    if (!files.length) return;
     setUploading(true);
+    setUploadProgress({ done: 0, total: files.length });
     try {
       const formData = new FormData();
-      formData.append("image", file);
-      const res = await fetch("/api/admin/upload", {
+      files.forEach((f) => formData.append("images", f));
+      const res = await fetch("/api/admin/upload-multiple", {
         method: "POST",
         body: formData,
         credentials: "include",
@@ -312,21 +318,43 @@ function ImageGalleryInput({
         throw new Error(err.message || "Upload failed");
       }
       const data = await res.json();
-      onChange([...images, data.url]);
-      toast({ title: "Image uploaded" });
+      setUploadProgress({ done: files.length, total: files.length });
+      onChange([...images, ...data.urls]);
+      toast({
+        title: `${files.length === 1 ? "Image" : `${files.length} images`} uploaded`,
+      });
     } catch (err: any) {
       toast({ title: "Upload failed", description: err.message, variant: "destructive" });
     } finally {
       setUploading(false);
+      setUploadProgress(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
-  const handleMultipleFiles = async (files: FileList | null) => {
-    if (!files) return;
-    for (let i = 0; i < files.length; i++) {
-      await handleFileUpload(files[i]);
-    }
+  const handleFilesSelected = (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    uploadFiles(Array.from(fileList));
+  };
+
+  const handleDropZoneDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.types.includes("Files")) setIsDragOver(true);
+  };
+
+  const handleDropZoneDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDropZoneDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
+    if (files.length) uploadFiles(files);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -345,15 +373,41 @@ function ImageGalleryInput({
   return (
     <div className="space-y-3">
       <label
-        className="flex items-center justify-center w-full h-12 border-2 border-dashed border-input cursor-pointer hover:border-accent-blue hover:bg-accent-blue/5 transition-all"
+        className={`flex flex-col items-center justify-center w-full h-20 border-2 border-dashed cursor-pointer transition-all ${
+          isDragOver
+            ? "border-accent-blue bg-accent-blue/10 scale-[1.01]"
+            : uploading
+            ? "border-input bg-muted/40 cursor-not-allowed"
+            : "border-input hover:border-accent-blue hover:bg-accent-blue/5"
+        }`}
+        onDragOver={handleDropZoneDragOver}
+        onDragLeave={handleDropZoneDragLeave}
+        onDrop={handleDropZoneDrop}
         data-testid="button-upload-gallery"
       >
         {uploading ? (
-          <Loader2 className="w-4 h-4 animate-spin text-accent-blue" />
+          <div className="flex flex-col items-center gap-1">
+            <Loader2 className="w-5 h-5 animate-spin text-accent-blue" />
+            {uploadProgress && (
+              <p className="text-[10px] font-mono text-accent-blue">
+                Uploading {uploadProgress.total} {uploadProgress.total === 1 ? "image" : "images"}…
+              </p>
+            )}
+          </div>
+        ) : isDragOver ? (
+          <div className="flex flex-col items-center gap-1 pointer-events-none">
+            <Upload className="w-5 h-5 text-accent-blue" />
+            <p className="text-xs font-mono text-accent-blue font-bold">Drop images here</p>
+          </div>
         ) : (
-          <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
-            <Upload className="w-4 h-4" />
-            Click to upload images or paste URLs below
+          <div className="flex flex-col items-center gap-1 pointer-events-none">
+            <Upload className="w-5 h-5 text-muted-foreground" />
+            <p className="text-xs font-mono text-muted-foreground">
+              Click to select or drag &amp; drop images
+            </p>
+            <p className="text-[10px] font-mono text-muted-foreground/60">
+              Select multiple files at once · JPG, PNG, WebP
+            </p>
           </div>
         )}
         <input
@@ -363,7 +417,7 @@ function ImageGalleryInput({
           multiple
           className="hidden"
           disabled={uploading}
-          onChange={(e) => handleMultipleFiles(e.target.files)}
+          onChange={(e) => handleFilesSelected(e.target.files)}
         />
       </label>
 
@@ -386,7 +440,7 @@ function ImageGalleryInput({
             </SortableContext>
           </DndContext>
           <p className="text-[10px] text-muted-foreground font-mono mt-2 flex items-center gap-1">
-            <GripVertical className="w-3 h-3" /> Drag thumbnails to reorder — first image is the Hero
+            <GripVertical className="w-3 h-3" /> Drag thumbnails to reorder — first image is the ★ Primary
           </p>
         </div>
       )}
