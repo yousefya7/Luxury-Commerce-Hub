@@ -2,41 +2,12 @@ import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ChevronLeft, ChevronRight, ArrowUp } from "lucide-react";
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { SplitText, FadeInSection } from "@/components/split-text";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useSEO } from "@/hooks/use-seo";
-
-const GALLERY_IMAGES = [
-  { id: 1,  src: "/images/gallery/chat-portrait-tee.jpg",      alt: "Being Resilient Defines Character" },
-  { id: 2,  src: "/images/gallery/jacket-graffiti-duo.jpg",    alt: "Jacket Drop — Graffiti Wall" },
-  { id: 3,  src: "/images/gallery/pt2-elliston-duo.jpg",       alt: "Elliston Place — Hoodie Duo" },
-  { id: 4,  src: "/images/gallery/jacket-garage-action.jpg",   alt: "Parking Garage Session" },
-  { id: 5,  src: "/images/gallery/chat-knight-tee.jpg",        alt: "Knight Tee Editorial" },
-  { id: 6,  src: "/images/gallery/jacket-rooftop.jpg",         alt: "Rooftop Session" },
-  { id: 7,  src: "/images/gallery/chat-stairs-duo.jpg",        alt: "Fire Escape — Golden Hour" },
-  { id: 8,  src: "/images/gallery/jacket-mural-front.jpg",     alt: "Bubble Mural" },
-  { id: 9,  src: "/images/gallery/chat-donuts.jpg",            alt: "Donut Shop Vibes" },
-  { id: 10, src: "/images/gallery/jacket-sidewalk-duo.jpg",    alt: "Sidewalk Duo" },
-  { id: 11, src: "/images/gallery/chat-wall-lean.jpg",         alt: "Character Tee Portrait" },
-  { id: 12, src: "/images/gallery/jacket-elevator-solo.jpg",   alt: "Elevator — Graffiti" },
-  { id: 13, src: "/images/gallery/chat-stairs-crew.jpg",       alt: "Crew on Steps" },
-  { id: 14, src: "/images/gallery/jacket-mural-hat.jpg",       alt: "Mural Series II" },
-  { id: 15, src: "/images/gallery/chat-flannels.jpg",          alt: "Resilient Flannels" },
-  { id: 16, src: "/images/gallery/pt2-donut-trio.jpg",         alt: "Donut Spot — Trio" },
-  { id: 17, src: "/images/gallery/jacket-storefront.jpg",      alt: "Night Storefront" },
-  { id: 18, src: "/images/gallery/chat-profile.jpg",           alt: "Profile Shot" },
-  { id: 19, src: "/images/gallery/jacket-rooftop-drone.jpg",   alt: "Rooftop — Drone" },
-  { id: 20, src: "/images/gallery/chat-duo-street.jpg",        alt: "Street Duo" },
-  { id: 21, src: "/images/gallery/jacket-bikeroute.jpg",       alt: "Bike Route — Night" },
-  { id: 22, src: "/images/gallery/jacket-mural-solo.jpg",      alt: "Mural Series" },
-  { id: 23, src: "/images/gallery/chat-car-lean.jpg",          alt: "Car Lean" },
-  { id: 24, src: "/images/gallery/jacket-night-sign.jpg",      alt: "Night Sign" },
-  { id: 25, src: "/images/gallery/jacket-phone.jpg",           alt: "Candid — Phone Check" },
-  { id: 26, src: "/images/gallery/jacket-elliston.jpg",        alt: "Elliston Place" },
-  { id: 27, src: "/images/gallery/jacket-flatlay-drone.jpg",   alt: "Jacket — Overhead" },
-  { id: 28, src: "/images/gallery/chat-balcony.jpg",           alt: "Balcony Shot" },
-  { id: 29, src: "/images/gallery/chat-alley.jpg",             alt: "Alley Session" },
-  { id: 30, src: "/images/gallery/jacket-flatlay.jpg",         alt: "Resilient Jacket — Flat Lay" },
-];
+import { imgUrl } from "@/lib/utils";
+import type { GalleryImage } from "@shared/schema";
 
 function distributeColumns<T>(items: T[], numCols: number): T[][] {
   const cols: T[][] = Array.from({ length: numCols }, () => []);
@@ -67,24 +38,45 @@ export default function Gallery() {
       "resilient official gallery, streetwear editorial, fashion photography, resilient lookbook, urban streetwear photos",
   });
 
+  const { data: galleryImages = [], isLoading } = useQuery<GalleryImage[]>({
+    queryKey: ["/api/gallery"],
+  });
+
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const numCols = useColumnCount();
-  const columns = distributeColumns(GALLERY_IMAGES, numCols);
+  const columns = distributeColumns(galleryImages, numCols);
 
   const openLightbox = useCallback((index: number) => setLightboxIndex(index), []);
   const closeLightbox = useCallback(() => setLightboxIndex(null), []);
 
-  const goPrev = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setLightboxIndex((i) => (i === null ? null : (i - 1 + GALLERY_IMAGES.length) % GALLERY_IMAGES.length));
-  }, []);
+  const goPrev = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setLightboxIndex((i) => (i === null ? null : (i - 1 + galleryImages.length) % galleryImages.length));
+    },
+    [galleryImages.length]
+  );
 
-  const goNext = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setLightboxIndex((i) => (i === null ? null : (i + 1) % GALLERY_IMAGES.length));
-  }, []);
+  const goNext = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setLightboxIndex((i) => (i === null ? null : (i + 1) % galleryImages.length));
+    },
+    [galleryImages.length]
+  );
 
-  const activeLightbox = lightboxIndex !== null ? GALLERY_IMAGES[lightboxIndex] : null;
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (lightboxIndex === null) return;
+      if (e.key === "Escape") closeLightbox();
+      if (e.key === "ArrowLeft") setLightboxIndex((i) => (i === null ? null : (i - 1 + galleryImages.length) % galleryImages.length));
+      if (e.key === "ArrowRight") setLightboxIndex((i) => (i === null ? null : (i + 1) % galleryImages.length));
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [lightboxIndex, galleryImages.length, closeLightbox]);
+
+  const activeLightbox = lightboxIndex !== null ? galleryImages[lightboxIndex] : null;
 
   return (
     <div className="min-h-screen bg-[#0A0A0A]" data-testid="page-gallery">
@@ -101,40 +93,51 @@ export default function Gallery() {
           </p>
         </FadeInSection>
 
-        {/* Flex masonry — manual columns for even bottoms */}
-        <div className="flex gap-3 md:gap-4 items-start">
-          {columns.map((col, ci) => (
-            <div key={ci} className="flex-1 flex flex-col gap-3 md:gap-4">
-              {col.map((image) => {
-                const globalIndex = GALLERY_IMAGES.findIndex((g) => g.id === image.id);
-                return (
-                  <motion.div
-                    key={image.id}
-                    className="relative overflow-hidden cursor-pointer group border border-white/5 hover:border-accent-blue/40 transition-colors duration-300"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4, delay: Math.min(globalIndex * 0.04, 0.8) }}
-                    onClick={() => openLightbox(globalIndex)}
-                    data-testid={`gallery-image-${image.id}`}
-                  >
-                    <img
-                      src={image.src}
-                      alt={image.alt}
-                      className="w-full h-auto block transition-all duration-500 group-hover:brightness-110 group-hover:scale-[1.02]"
-                      loading="lazy"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-                    <div className="absolute bottom-0 left-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
-                      <p className="text-white text-[10px] font-mono tracking-luxury uppercase leading-tight">
-                        {image.alt}
-                      </p>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
+        {isLoading ? (
+          <div className="flex gap-3 md:gap-4 items-start">
+            {Array.from({ length: numCols }).map((_, ci) => (
+              <div key={ci} className="flex-1 flex flex-col gap-3 md:gap-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className={`w-full ${i % 2 === 0 ? "aspect-[3/4]" : "aspect-square"}`} />
+                ))}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex gap-3 md:gap-4 items-start">
+            {columns.map((col, ci) => (
+              <div key={ci} className="flex-1 flex flex-col gap-3 md:gap-4">
+                {col.map((image) => {
+                  const globalIndex = galleryImages.findIndex((g) => g.id === image.id);
+                  return (
+                    <motion.div
+                      key={image.id}
+                      className="relative overflow-hidden cursor-pointer group border border-white/5 hover:border-accent-blue/40 transition-colors duration-300"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: Math.min(globalIndex * 0.04, 0.8) }}
+                      onClick={() => openLightbox(globalIndex)}
+                      data-testid={`gallery-image-${image.id}`}
+                    >
+                      <img
+                        src={imgUrl(image.src)}
+                        alt={image.alt}
+                        className="w-full h-auto block transition-all duration-500 group-hover:brightness-110 group-hover:scale-[1.02]"
+                        loading="lazy"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                      <div className="absolute bottom-0 left-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
+                        <p className="text-white text-[10px] font-mono tracking-luxury uppercase leading-tight">
+                          {image.alt}
+                        </p>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Footer sign-off */}
         <FadeInSection>
@@ -187,7 +190,6 @@ export default function Gallery() {
           >
             <div className="absolute inset-0 bg-black/95 backdrop-blur-2xl" />
 
-            {/* Close button */}
             <button
               className="absolute top-5 right-5 z-20 w-10 h-10 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all border border-white/10"
               onClick={closeLightbox}
@@ -196,7 +198,6 @@ export default function Gallery() {
               <X className="w-5 h-5" />
             </button>
 
-            {/* Prev button */}
             <button
               className="absolute left-3 md:left-6 z-20 w-10 h-10 md:w-12 md:h-12 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all border border-white/10"
               onClick={goPrev}
@@ -205,7 +206,6 @@ export default function Gallery() {
               <ChevronLeft className="w-5 h-5" />
             </button>
 
-            {/* Next button */}
             <button
               className="absolute right-3 md:right-6 z-20 w-10 h-10 md:w-12 md:h-12 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all border border-white/10"
               onClick={goNext}
@@ -214,27 +214,25 @@ export default function Gallery() {
               <ChevronRight className="w-5 h-5" />
             </button>
 
-            {/* Image */}
             <motion.img
               key={activeLightbox.id}
               initial={{ scale: 0.92, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.92, opacity: 0 }}
               transition={{ type: "spring", stiffness: 260, damping: 28 }}
-              src={activeLightbox.src}
+              src={imgUrl(activeLightbox.src)}
               alt={activeLightbox.alt}
               className="relative z-10 max-w-[88vw] max-h-[88vh] object-contain"
               onClick={(e) => e.stopPropagation()}
               data-testid="lightbox-image"
             />
 
-            {/* Caption + counter */}
             <div className="absolute bottom-6 left-0 right-0 flex flex-col items-center gap-1 z-10 pointer-events-none">
               <p className="text-accent-blue/90 text-[10px] font-mono tracking-luxury uppercase">
                 {activeLightbox.alt}
               </p>
               <p className="text-white/30 text-[10px] font-mono">
-                {lightboxIndex! + 1} / {GALLERY_IMAGES.length}
+                {lightboxIndex! + 1} / {galleryImages.length}
               </p>
             </div>
           </motion.div>

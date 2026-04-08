@@ -59,7 +59,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
-import type { Product, Stock, Customer, Order, Category, CustomerWithOrders } from "@shared/schema";
+import type { Product, Stock, Customer, Order, Category, CustomerWithOrders, GalleryImage } from "@shared/schema";
 
 type AdminData = {
   products: (Product & { stock: Stock[] })[];
@@ -77,7 +77,7 @@ type AdminData = {
 import { PromoCodesTab } from "./PromoCodesTab";
 import { NewArrivalsTab } from "./NewArrivalsTab";
 
-type Tab = "overview" | "inventory" | "customers" | "orders" | "categories" | "marketing" | "promo" | "settings" | "contacts" | "new-arrivals" | "gallery" | "site-settings";
+type Tab = "overview" | "inventory" | "customers" | "orders" | "categories" | "marketing" | "promo" | "settings" | "contacts" | "new-arrivals" | "gallery" | "site-settings" | "gallery-mgmt";
 
 type NavItem = { id: Tab; label: string; icon: React.ElementType };
 type NavGroup = { label: string; items: NavItem[] };
@@ -109,6 +109,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Store",
     items: [
+      { id: "gallery-mgmt", label: "Gallery", icon: Image },
       { id: "gallery", label: "Homepage Images", icon: Image },
       { id: "site-settings", label: "General Settings", icon: Shield },
     ],
@@ -2554,6 +2555,7 @@ export default function AdminDashboard() {
         {tab === "settings" && <SettingsPanel section="all" />}
         {tab === "gallery" && <SettingsPanel section="gallery" />}
         {tab === "site-settings" && <SettingsPanel section="site-settings" />}
+        {tab === "gallery-mgmt" && <GalleryManagementPanel />}
         </div>
       </div>
 
@@ -3358,6 +3360,394 @@ function MarketingPanel() {
         </div>
       </div>
     </motion.div>
+  );
+}
+
+// ── Gallery Management Panel ─────────────────────────────────────────────────
+
+type GalleryForm = { src: string; alt: string; displayOrder: number };
+const EMPTY_GALLERY_FORM: GalleryForm = { src: "", alt: "", displayOrder: 0 };
+
+function GalleryImageModal({
+  mode,
+  initial,
+  onSave,
+  onClose,
+  isPending,
+}: {
+  mode: "add" | "edit";
+  initial: GalleryForm;
+  onSave: (form: GalleryForm) => void;
+  onClose: () => void;
+  isPending: boolean;
+}) {
+  const [form, setForm] = useState<GalleryForm>(initial);
+  const [uploading, setUploading] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+
+  const uploadFile = async (file: File) => {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const res = await fetch("/api/admin/upload", { method: "POST", body: fd, credentials: "include" });
+      if (!res.ok) throw new Error((await res.json()).message || "Upload failed");
+      const { url } = await res.json();
+      setForm((f) => ({ ...f, src: url }));
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 px-4" onClick={onClose}>
+      <div
+        className="bg-background border-2 border-border w-full max-w-md p-6 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-sm font-bold tracking-luxury uppercase">
+          {mode === "add" ? "Add Gallery Image" : "Edit Gallery Image"}
+        </h2>
+
+        {/* Upload zone */}
+        <label
+          className={`flex flex-col items-center justify-center w-full h-20 border-2 border-dashed cursor-pointer transition-all ${
+            isDragOver ? "border-accent-blue bg-accent-blue/10" : uploading ? "border-input bg-muted/40 cursor-not-allowed" : "border-input hover:border-accent-blue hover:bg-accent-blue/5"
+          }`}
+          onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer.types.includes("Files")) setIsDragOver(true); }}
+          onDragLeave={() => setIsDragOver(false)}
+          onDrop={(e) => { e.preventDefault(); setIsDragOver(false); const f = Array.from(e.dataTransfer.files).find((f) => f.type.startsWith("image/")); if (f) uploadFile(f); }}
+        >
+          {uploading ? (
+            <div className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin text-accent-blue" /><span className="text-xs font-mono text-accent-blue">Uploading…</span></div>
+          ) : (
+            <div className="flex flex-col items-center gap-1 pointer-events-none">
+              <Upload className="w-4 h-4 text-muted-foreground" />
+              <span className="text-xs font-mono text-muted-foreground">Click or drop image to upload</span>
+            </div>
+          )}
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" disabled={uploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f); }} />
+        </label>
+
+        {/* URL field */}
+        <div>
+          <label className="text-xs font-mono text-muted-foreground mb-1 block">Or paste image URL</label>
+          <Input
+            className="border-2 font-mono text-xs"
+            placeholder="https://example.com/image.jpg"
+            value={form.src}
+            onChange={(e) => setForm((f) => ({ ...f, src: e.target.value }))}
+            data-testid="input-gallery-src"
+          />
+        </div>
+
+        {/* Preview */}
+        {form.src && (
+          <div className="aspect-video bg-muted overflow-hidden border-2 border-border/50">
+            <img src={form.src} alt="preview" className="w-full h-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.opacity = "0.3")} />
+          </div>
+        )}
+
+        {/* Caption */}
+        <div>
+          <label className="text-xs font-mono text-muted-foreground mb-1 block">Caption / Alt Text</label>
+          <Input
+            className="border-2 font-mono text-xs"
+            placeholder="e.g. Jacket Drop — Graffiti Wall"
+            value={form.alt}
+            onChange={(e) => setForm((f) => ({ ...f, alt: e.target.value }))}
+            data-testid="input-gallery-alt"
+          />
+        </div>
+
+        {/* Display order */}
+        <div>
+          <label className="text-xs font-mono text-muted-foreground mb-1 block">Display Order</label>
+          <Input
+            type="number"
+            className="border-2 font-mono text-xs w-32"
+            value={form.displayOrder}
+            onChange={(e) => setForm((f) => ({ ...f, displayOrder: Number(e.target.value) }))}
+            data-testid="input-gallery-order"
+          />
+        </div>
+
+        <div className="flex justify-end gap-3 pt-2">
+          <Button variant="outline" className="border-2 text-xs tracking-luxury uppercase" onClick={onClose}>Cancel</Button>
+          <Button
+            className="text-xs tracking-luxury uppercase btn-liquid no-default-hover-elevate no-default-active-elevate border-2 border-accent-blue bg-accent-blue text-white"
+            disabled={isPending || uploading || !form.src}
+            onClick={() => onSave(form)}
+            data-testid="button-gallery-save"
+          >
+            {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Save className="w-4 h-4 mr-2" />{mode === "add" ? "Add Image" : "Save Changes"}</>}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GalleryManagementPanel() {
+  const { toast } = useToast();
+  const [showAdd, setShowAdd] = useState(false);
+  const [editTarget, setEditTarget] = useState<GalleryImage | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<GalleryImage | null>(null);
+  const [localImages, setLocalImages] = useState<GalleryImage[]>([]);
+
+  const { data: images = [], isLoading } = useQuery<GalleryImage[]>({ queryKey: ["/api/gallery"] });
+
+  useEffect(() => { setLocalImages(images); }, [images]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const saveReorder = async (ordered: GalleryImage[]) => {
+    try {
+      await apiRequest("POST", "/api/admin/gallery/reorder", {
+        ordered: ordered.map((img, i) => ({ id: img.id, displayOrder: i })),
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/gallery"] });
+    } catch { toast({ title: "Reorder failed", variant: "destructive" }); }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = localImages.findIndex((img) => img.id === String(active.id));
+    const newIndex = localImages.findIndex((img) => img.id === String(over.id));
+    const reordered = arrayMove(localImages, oldIndex, newIndex);
+    setLocalImages(reordered);
+    saveReorder(reordered);
+  };
+
+  const moveUp = (index: number) => {
+    if (index === 0) return;
+    const reordered = arrayMove(localImages, index, index - 1);
+    setLocalImages(reordered);
+    saveReorder(reordered);
+  };
+
+  const moveDown = (index: number) => {
+    if (index === localImages.length - 1) return;
+    const reordered = arrayMove(localImages, index, index + 1);
+    setLocalImages(reordered);
+    saveReorder(reordered);
+  };
+
+  const createMutation = useMutation({
+    mutationFn: (form: GalleryForm) => apiRequest("POST", "/api/admin/gallery", { ...form }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gallery"] });
+      setShowAdd(false);
+      toast({ title: "Image added to gallery" });
+    },
+    onError: (err: any) => toast({ title: "Failed to add image", description: err.message, variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, form }: { id: string; form: GalleryForm }) =>
+      apiRequest("PATCH", `/api/admin/gallery/${id}`, { ...form }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gallery"] });
+      setEditTarget(null);
+      toast({ title: "Gallery image updated" });
+    },
+    onError: (err: any) => toast({ title: "Failed to update", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/admin/gallery/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gallery"] });
+      setDeleteTarget(null);
+      toast({ title: "Image deleted" });
+    },
+    onError: (err: any) => toast({ title: "Failed to delete", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="p-6 space-y-6" data-testid="panel-gallery-mgmt">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold tracking-luxury uppercase">Gallery</h2>
+          <p className="text-xs text-muted-foreground font-mono mt-1">Manage photos shown on the gallery page — drag to reorder</p>
+        </div>
+        <Button
+          className="text-xs tracking-luxury uppercase btn-liquid no-default-hover-elevate no-default-active-elevate border-2 border-accent-blue bg-accent-blue text-white"
+          onClick={() => setShowAdd(true)}
+          data-testid="button-add-gallery-image"
+        >
+          <Plus className="w-4 h-4 mr-2" /> Add Image
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="aspect-square" />)}
+        </div>
+      ) : localImages.length === 0 ? (
+        <div className="border-2 border-dashed border-border/50 p-12 text-center text-muted-foreground text-xs font-mono">
+          No gallery images yet. Click "Add Image" to get started.
+        </div>
+      ) : (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={localImages.map((img) => img.id)} strategy={rectSortingStrategy}>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {localImages.map((img, index) => (
+                <GallerySortableCard
+                  key={img.id}
+                  img={img}
+                  index={index}
+                  total={localImages.length}
+                  onEdit={() => setEditTarget(img)}
+                  onDelete={() => setDeleteTarget(img)}
+                  onMoveUp={() => moveUp(index)}
+                  onMoveDown={() => moveDown(index)}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      )}
+
+      {showAdd && (
+        <GalleryImageModal
+          mode="add"
+          initial={{ ...EMPTY_GALLERY_FORM, displayOrder: localImages.length }}
+          onSave={(form) => createMutation.mutate(form)}
+          onClose={() => setShowAdd(false)}
+          isPending={createMutation.isPending}
+        />
+      )}
+
+      {editTarget && (
+        <GalleryImageModal
+          mode="edit"
+          initial={{ src: editTarget.src, alt: editTarget.alt, displayOrder: editTarget.displayOrder }}
+          onSave={(form) => updateMutation.mutate({ id: editTarget.id, form })}
+          onClose={() => setEditTarget(null)}
+          isPending={updateMutation.isPending}
+        />
+      )}
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent className="border-2 border-red-600/50">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-sm font-bold tracking-luxury uppercase">Delete Gallery Image?</AlertDialogTitle>
+            <AlertDialogDescription className="text-xs font-mono">
+              This will permanently remove "{deleteTarget?.alt || deleteTarget?.src}" from the gallery page.
+              {deleteTarget?.src.startsWith("https://res.cloudinary.com/") && " The image will also be deleted from Cloudinary."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-2 text-xs tracking-luxury uppercase">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="text-xs tracking-luxury uppercase bg-red-600 hover:bg-red-700 text-white border-2 border-red-600"
+              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+              data-testid="button-confirm-delete-gallery"
+            >
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function GallerySortableCard({
+  img,
+  index,
+  total,
+  onEdit,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+}: {
+  img: GalleryImage;
+  index: number;
+  total: number;
+  onEdit: () => void;
+  onDelete: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: img.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1, zIndex: isDragging ? 10 : "auto" };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style as React.CSSProperties}
+      className="relative group border-2 border-border/50 bg-card overflow-hidden"
+      data-testid={`card-gallery-${img.id}`}
+    >
+      <div className="aspect-square overflow-hidden bg-muted">
+        <img src={img.src} alt={img.alt} className="w-full h-full object-cover" loading="lazy" />
+      </div>
+
+      {/* Drag handle overlay */}
+      <div
+        {...attributes}
+        {...listeners}
+        className="absolute top-2 left-2 w-7 h-7 bg-black/60 text-white flex items-center justify-center cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity touch-none"
+        title="Drag to reorder"
+      >
+        <GripVertical className="w-4 h-4" />
+      </div>
+
+      {/* Caption */}
+      {img.alt && (
+        <div className="px-2 py-1.5 border-t-2 border-border/30">
+          <p className="text-[10px] font-mono text-muted-foreground truncate">{img.alt}</p>
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex border-t-2 border-border/30">
+        <button
+          onClick={onMoveUp}
+          disabled={index === 0}
+          className="flex-1 py-1.5 text-[10px] font-mono text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-30 flex items-center justify-center gap-1"
+          title="Move up"
+          data-testid={`button-gallery-up-${img.id}`}
+        >
+          <ChevronLeft className="w-3 h-3 rotate-90" />
+        </button>
+        <button
+          onClick={onMoveDown}
+          disabled={index === total - 1}
+          className="flex-1 py-1.5 text-[10px] font-mono text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-30 flex items-center justify-center gap-1 border-l border-border/30"
+          title="Move down"
+          data-testid={`button-gallery-down-${img.id}`}
+        >
+          <ChevronRight className="w-3 h-3 rotate-90" />
+        </button>
+        <button
+          onClick={onEdit}
+          className="flex-1 py-1.5 text-[10px] font-mono text-accent-blue hover:bg-accent-blue/10 transition-colors flex items-center justify-center gap-1 border-l border-border/30"
+          title="Edit"
+          data-testid={`button-gallery-edit-${img.id}`}
+        >
+          <Pencil className="w-3 h-3" />
+        </button>
+        <button
+          onClick={onDelete}
+          className="flex-1 py-1.5 text-[10px] font-mono text-red-500 hover:bg-red-500/10 transition-colors flex items-center justify-center gap-1 border-l border-border/30"
+          title="Delete"
+          data-testid={`button-gallery-delete-${img.id}`}
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
+      </div>
+    </div>
   );
 }
 

@@ -1,0 +1,66 @@
+"Add a fully manageable Gallery section to the admin dashboard so gallery images can be added, edited, and deleted without touching code. Here are the full requirements:
+
+Admin Dashboard — Gallery Management Section:
+
+Add a "Gallery" section in the admin dashboard under Store Settings or as its own section
+Display all current gallery images in a clean grid view showing thumbnails of each image
+Each image card should show:
+
+The image thumbnail
+The image title or caption if it has one
+An Edit button
+A Delete button
+
+
+Add a prominent "Add Image" button at the top of the gallery section
+
+
+Adding a New Gallery Image:
+
+Clicking Add Image opens a modal with:
+
+Image upload — drag and drop or click to upload directly from computer
+OR paste an image URL
+Optional title or caption field
+Optional display order/position field so admin can control where it appears
+Save button
+
+
+Uploaded images go directly to cloud storage (Cloudinary) and save the public URL to the database
+
+
+Editing a Gallery Image:
+
+Clicking Edit on an image opens a modal with:
+
+Ability to replace the image by uploading a new one or entering a new URL
+Ability to edit the title or caption
+Ability to change the display order
+Save button
+
+
+
+
+Deleting a Gallery Image:
+
+Clicking Delete shows a confirmation popup asking "Are you sure you want to delete this image?"
+On confirm, remove the image from the database and the gallery on the live site
+If stored on Cloudinary also delete it from Cloudinary to keep storage clean
+
+
+Reordering Gallery Images:
+
+Allow drag and drop reordering of gallery images in the admin grid
+The order set in the admin should reflect exactly on the live gallery page
+Add Move Up and Move Down buttons as an alternative to drag and drop for easier reordering on mobile
+
+
+Live Gallery Page on Website:
+
+The gallery page on the storefront should pull all images dynamically from the database
+Images should display in the order set in the admin dashboard
+Any image added, edited, or deleted in the admin should reflect on the live gallery immediately after saving
+Gallery should display in a clean responsive grid on both desktop and mobile
+
+
+Do not break any existing gallery page or admin functionality — only add the management layer on top"**

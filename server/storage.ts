@@ -7,8 +7,9 @@ import {
   type Category, type InsertCategory,
   type PromoCode, type InsertPromoCode,
   type ContactSubmission, type InsertContactSubmission,
+  type GalleryImage, type InsertGalleryImage,
   type ProductWithStock, type CustomerWithOrders,
-  products, stock, customers, orders, smsSubscribers, siteSettings, categories, promoCodes, contactSubmissions,
+  products, stock, customers, orders, smsSubscribers, siteSettings, categories, promoCodes, contactSubmissions, galleryImages,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql } from "drizzle-orm";
@@ -65,6 +66,12 @@ export interface IStorage {
   createContactSubmission(data: InsertContactSubmission): Promise<ContactSubmission>;
   getContactSubmissions(): Promise<ContactSubmission[]>;
   deleteContactSubmission(id: string): Promise<void>;
+  // Gallery images
+  getGalleryImages(): Promise<GalleryImage[]>;
+  createGalleryImage(data: InsertGalleryImage): Promise<GalleryImage>;
+  updateGalleryImage(id: string, data: Partial<InsertGalleryImage>): Promise<GalleryImage | undefined>;
+  deleteGalleryImage(id: string): Promise<GalleryImage | undefined>;
+  reorderGalleryImages(ordered: { id: string; displayOrder: number }[]): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -328,6 +335,33 @@ export class DatabaseStorage implements IStorage {
 
   async deleteContactSubmission(id: string): Promise<void> {
     await db.delete(contactSubmissions).where(eq(contactSubmissions.id, id));
+  }
+
+  async getGalleryImages(): Promise<GalleryImage[]> {
+    return db.select().from(galleryImages).orderBy(galleryImages.displayOrder, galleryImages.createdAt);
+  }
+
+  async createGalleryImage(data: InsertGalleryImage): Promise<GalleryImage> {
+    const [created] = await db.insert(galleryImages).values(data).returning();
+    return created;
+  }
+
+  async updateGalleryImage(id: string, data: Partial<InsertGalleryImage>): Promise<GalleryImage | undefined> {
+    const [updated] = await db.update(galleryImages).set(data).where(eq(galleryImages.id, id)).returning();
+    return updated;
+  }
+
+  async deleteGalleryImage(id: string): Promise<GalleryImage | undefined> {
+    const [deleted] = await db.delete(galleryImages).where(eq(galleryImages.id, id)).returning();
+    return deleted;
+  }
+
+  async reorderGalleryImages(ordered: { id: string; displayOrder: number }[]): Promise<void> {
+    await Promise.all(
+      ordered.map(({ id, displayOrder }) =>
+        db.update(galleryImages).set({ displayOrder }).where(eq(galleryImages.id, id))
+      )
+    );
   }
 }
 

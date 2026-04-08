@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertProductSchema, type OrderItem, type ShippingAddress } from "@shared/schema";
+import { insertProductSchema, insertGalleryImageSchema, type OrderItem, type ShippingAddress } from "@shared/schema";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
 import { pool } from "./db";
@@ -1669,6 +1669,68 @@ ${allPages
       res.json({ ...result, total: recipients.length });
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Email blast failed" });
+    }
+  });
+
+  // ── Gallery Routes ──────────────────────────────────────────────────────
+  app.get("/api/gallery", async (_req, res) => {
+    try {
+      const images = await storage.getGalleryImages();
+      res.json(images);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch gallery" });
+    }
+  });
+
+  app.post("/api/admin/gallery", requireAdmin, async (req, res) => {
+    const parsed = insertGalleryImageSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
+    try {
+      const created = await storage.createGalleryImage(parsed.data);
+      res.json(created);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to create gallery image" });
+    }
+  });
+
+  app.patch("/api/admin/gallery/:id", requireAdmin, async (req, res) => {
+    try {
+      const updated = await storage.updateGalleryImage(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ message: "Gallery image not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to update gallery image" });
+    }
+  });
+
+  app.delete("/api/admin/gallery/:id", requireAdmin, async (req, res) => {
+    try {
+      const deleted = await storage.deleteGalleryImage(req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Gallery image not found" });
+      // Clean up Cloudinary if applicable
+      if (deleted.src.startsWith("https://res.cloudinary.com/")) {
+        const parts = deleted.src.split("/upload/");
+        if (parts.length === 2) {
+          const publicId = parts[1].replace(/\.[^.]+$/, "");
+          cloudinary.uploader.destroy(publicId).catch((e: any) =>
+            console.warn(`Failed to delete Cloudinary image ${publicId}:`, e?.message)
+          );
+        }
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to delete gallery image" });
+    }
+  });
+
+  app.post("/api/admin/gallery/reorder", requireAdmin, async (req, res) => {
+    const { ordered } = req.body as { ordered: { id: string; displayOrder: number }[] };
+    if (!Array.isArray(ordered)) return res.status(400).json({ message: "ordered must be an array" });
+    try {
+      await storage.reorderGalleryImages(ordered);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to reorder gallery" });
     }
   });
 

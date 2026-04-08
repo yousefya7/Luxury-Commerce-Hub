@@ -109,6 +109,18 @@ export const insertContactSubmissionSchema = createInsertSchema(contactSubmissio
 export type ContactSubmission = typeof contactSubmissions.$inferSelect;
 export type InsertContactSubmission = z.infer<typeof insertContactSubmissionSchema>;
 
+export const galleryImages = pgTable("gallery_images", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  src: text("src").notNull(),
+  alt: text("alt").notNull().default(""),
+  displayOrder: integer("display_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertGalleryImageSchema = createInsertSchema(galleryImages).omit({ id: true, createdAt: true });
+export type GalleryImage = typeof galleryImages.$inferSelect;
+export type InsertGalleryImage = z.infer<typeof insertGalleryImageSchema>;
+
 export const insertProductSchema = createInsertSchema(products).omit({ id: true, createdAt: true });
 export const insertStockSchema = createInsertSchema(stock).omit({ id: true });
 export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });
