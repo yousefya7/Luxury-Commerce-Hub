@@ -1,0 +1,122 @@
+Here's your prompt:
+
+"The background music is not playing at all on the live site even though a YouTube URL is saved in the admin dashboard. Do a full step by step debug and fix. Here are the requirements:
+
+Verify the saved URL is actually reaching the frontend:
+
+Add a console.log on the API endpoint that returns music settings showing exactly what is being returned
+Add a console.log on the frontend showing exactly what the music settings API is returning
+Open the browser console on resilientofficial.com and confirm the URL is being received by the frontend
+If the frontend is not receiving the URL fix the API endpoint
+
+
+Verify the YouTube video ID extraction:
+
+Console log the extracted video ID after parsing the YouTube URL
+Make sure it handles all YouTube URL formats:
+
+https://www.youtube.com/watch?v=VIDEO_ID
+https://youtu.be/VIDEO_ID
+https://www.youtube.com/embed/VIDEO_ID
+
+
+If the video ID extraction is failing fix it
+
+
+Verify the YouTube IFrame API is loading:
+
+Check that the YouTube IFrame API script is loading on the page:
+
+
+
+html     <script src="https://www.youtube.com/iframe_api"></script>
+
+Console log when onYouTubeIframeAPIReady fires to confirm the API loaded
+If it is not firing the script is not loading correctly
+
+
+Verify the player is initializing:
+
+Console log inside the onReady callback to confirm the player initialized
+Console log the player state after calling playVideo()
+If onReady never fires the player container has a CSS issue
+
+
+Verify the player container:
+
+Make sure the player container exists in the DOM before the YouTube API tries to initialize
+Make sure it is using off screen CSS and NOT display none:
+
+
+
+css     position: fixed;
+     left: -9999px;
+     top: -9999px;
+     width: 320px;
+     height: 180px;
+     opacity: 0;
+     pointer-events: none;
+
+Verify autoplay is being handled:
+
+Most browsers require a user interaction before playing audio
+Make sure on first click anywhere on the page the music starts
+Add a visible but subtle '🎵 Click anywhere to enable music' prompt on first load that disappears after the first click
+
+
+Check for errors:
+
+Check the browser console on resilientofficial.com for ANY errors related to YouTube or the music player
+Check if YouTube is blocking the video from being embedded — some videos have embedding disabled
+Try using a known embeddable YouTube video to test if the player works at all
+
+
+Nuclear option — rewrite the player cleanly:
+
+If after all the above checks the player still does not work, completely rewrite the music player from scratch using this exact simple implementation:
+
+
+
+javascript     // Load YouTube API
+     const tag = document.createElement('script')
+     tag.src = 'https://www.youtube.com/iframe_api'
+     document.head.appendChild(tag)
+
+     window.onYouTubeIframeAPIReady = function() {
+       const player = new YT.Player('yt-player', {
+         height: '1',
+         width: '1',
+         videoId: YOUR_VIDEO_ID_FROM_DB,
+         playerVars: {
+           autoplay: 1,
+           loop: 1,
+           playlist: YOUR_VIDEO_ID_FROM_DB,
+           controls: 0,
+           enablejsapi: 1,
+           origin: 'https://resilientofficial.com'
+         },
+         events: {
+           onReady: function(e) {
+             e.target.setVolume(50)
+             e.target.playVideo()
+             console.log('YouTube player ready and playing')
+           },
+           onError: function(e) {
+             console.log('YouTube player error:', e.data)
+           }
+         }
+       })
+     }
+
+Place the player div off screen not hidden:
+
+html     <div id='yt-player' style='position:fixed;left:-9999px;top:-9999px;width:320px;height:180px;'></div>
+
+Deploy to production after every fix:
+
+Every change must be deployed to the live site at resilientofficial.com
+Test in an incognito window after every deploy
+Do not just test on the development server
+
+
+Do not break any existing site functionality — only fix the music player"**

@@ -662,6 +662,13 @@ ${allPages
     if (settings.new_arrivals_ids) {
       try { newArrivalsIds = JSON.parse(settings.new_arrivals_ids); } catch {}
     }
+    const musicPayload = {
+      enabled: settings.music_enabled === "true",
+      youtubeUrl: settings.music_youtube_url || "",
+      loop: settings.music_loop !== "false",
+      volume: parseInt(settings.music_volume || "60", 10),
+    };
+    console.log("[API /settings/public] music settings being returned:", JSON.stringify(musicPayload));
     res.json({
       preorderMode: settings.preorder_mode === "true",
       preorderTimeframe: settings.preorder_timeframe || "4-6 weeks",
@@ -670,12 +677,7 @@ ${allPages
       newArrivalsIds,
       collectionImage: settings.collection_image || "",
       collectionHeading: settings.collection_heading || "THE COLLECTION",
-      music: {
-        enabled: settings.music_enabled === "true",
-        youtubeUrl: settings.music_youtube_url || "",
-        loop: settings.music_loop !== "false",
-        volume: parseInt(settings.music_volume || "60", 10),
-      },
+      music: musicPayload,
     });
   });
 

@@ -7,12 +7,12 @@ import type { PublicSettings } from "@/hooks/use-public-settings";
 declare global {
   interface Window {
     YT: any;
-    onYouTubeIframeAPIReady: () => void;
+    onYouTubeIframeAPIReady: (() => void) | undefined;
   }
 }
 
-function extractYouTubeId(url: string): string | null {
-  if (!url) return null;
+function extractVideoId(url: string): string | null {
+  if (!url || !url.trim()) return null;
   const patterns = [
     /[?&]v=([a-zA-Z0-9_-]{11})/,
     /youtu\.be\/([a-zA-Z0-9_-]{11})/,
@@ -21,30 +21,46 @@ function extractYouTubeId(url: string): string | null {
   ];
   for (const p of patterns) {
     const m = url.match(p);
-    if (m) return m[1];
+    if (m) {
+      console.log("[MusicPlayer] Extracted video ID:", m[1], "from URL:", url);
+      return m[1];
+    }
   }
+  console.warn("[MusicPlayer] Could not extract video ID from URL:", url);
   return null;
 }
 
-let ytApiPromise: Promise<void> | null = null;
+let ytApiLoaded = false;
+let ytApiCallbacks: (() => void)[] = [];
+
 function loadYouTubeApi(): Promise<void> {
-  if (ytApiPromise) return ytApiPromise;
-  ytApiPromise = new Promise((resolve) => {
-    if (window.YT && window.YT.Player) { resolve(); return; }
-    const prev = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => { if (prev) prev(); resolve(); };
-    if (!document.getElementById("yt-iframe-api")) {
-      const s = document.createElement("script");
-      s.id = "yt-iframe-api";
-      s.src = "https://www.youtube.com/iframe_api";
-      document.head.appendChild(s);
+  return new Promise((resolve) => {
+    if (window.YT && window.YT.Player) {
+      console.log("[MusicPlayer] YouTube API already loaded — skipping script inject");
+      resolve();
+      return;
     }
+    ytApiCallbacks.push(resolve);
+    if (ytApiLoaded) return;
+    ytApiLoaded = true;
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      console.log("[MusicPlayer] onYouTubeIframeAPIReady fired — API is ready");
+      if (prev) prev();
+      ytApiCallbacks.forEach((cb) => cb());
+      ytApiCallbacks = [];
+    };
+    const tag = document.createElement("script");
+    tag.src = "https://www.youtube.com/iframe_api";
+    tag.id = "yt-iframe-api";
+    document.head.appendChild(tag);
+    console.log("[MusicPlayer] YouTube IFrame API script injected");
   });
-  return ytApiPromise;
 }
 
 export default function MusicPlayer() {
   const [location] = useLocation();
+  const isAdmin = location.startsWith("/admin");
 
   const { data: settings } = useQuery<PublicSettings>({
     queryKey: ["/api/settings/public"],
@@ -52,6 +68,7 @@ export default function MusicPlayer() {
     refetchOnMount: true,
     refetchOnWindowFocus: true,
   });
+
   const music = settings?.music;
 
   const [isPlaying, setIsPlaying] = useState(false);
@@ -60,53 +77,89 @@ export default function MusicPlayer() {
   const [isDismissed, setIsDismissed] = useState(false);
   const [playerReady, setPlayerReady] = useState(false);
   const [needsClick, setNeedsClick] = useState(false);
-  const [volume, setVolume] = useState(60);
+  const [localVolume, setLocalVolume] = useState(60);
 
   const playerRef = useRef<any>(null);
-  const videoIdRef = useRef<string | null>(null);
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const playAttemptedRef = useRef(false);
-
-  const isAdmin = location.startsWith("/admin");
+  const activeVideoIdRef = useRef<string | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const divIdRef = useRef<string>("");
 
   const destroyPlayer = useCallback(() => {
+    console.log("[MusicPlayer] Destroying player instance");
     try { playerRef.current?.destroy(); } catch {}
     playerRef.current = null;
-    videoIdRef.current = null;
-    playAttemptedRef.current = false;
+    activeVideoIdRef.current = null;
     setPlayerReady(false);
     setIsPlaying(false);
     setNeedsClick(false);
-    if (wrapperRef.current) { wrapperRef.current.remove(); wrapperRef.current = null; }
+    if (containerRef.current) {
+      containerRef.current.remove();
+      containerRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
     if (isAdmin) return;
-    if (!music?.enabled || !music?.youtubeUrl) { destroyPlayer(); return; }
 
-    const videoId = extractYouTubeId(music.youtubeUrl);
-    if (!videoId) return;
-    if (videoId === videoIdRef.current && playerRef.current) return;
+    if (!music) {
+      console.log("[MusicPlayer] Settings not yet loaded — waiting");
+      return;
+    }
+
+    console.log("[MusicPlayer] Music settings received from API:", JSON.stringify(music));
+
+    if (!music.enabled) {
+      console.log("[MusicPlayer] Music is disabled in dashboard — not loading player");
+      destroyPlayer();
+      return;
+    }
+
+    if (!music.youtubeUrl) {
+      console.log("[MusicPlayer] No YouTube URL saved in dashboard — not loading player");
+      destroyPlayer();
+      return;
+    }
+
+    const videoId = extractVideoId(music.youtubeUrl);
+    if (!videoId) {
+      console.warn("[MusicPlayer] URL could not be parsed — aborting");
+      return;
+    }
+
+    if (videoId === activeVideoIdRef.current && playerRef.current) {
+      console.log("[MusicPlayer] Same video ID already loaded — skipping reinit:", videoId);
+      return;
+    }
 
     destroyPlayer();
-    videoIdRef.current = videoId;
+    activeVideoIdRef.current = videoId;
     const vol = music.volume ?? 60;
-    setVolume(vol);
+    setLocalVolume(vol);
+
+    const divId = `yt-player-${Date.now()}`;
+    divIdRef.current = divId;
+
+    const container = document.createElement("div");
+    container.style.cssText =
+      "position:fixed;left:-9999px;top:-9999px;width:320px;height:180px;opacity:0;pointer-events:none;z-index:-1;";
+    const inner = document.createElement("div");
+    inner.id = divId;
+    container.appendChild(inner);
+    document.body.appendChild(container);
+    containerRef.current = container;
+
+    console.log("[MusicPlayer] Initializing YouTube player for videoId:", videoId);
 
     loadYouTubeApi().then(() => {
-      const wrapper = document.createElement("div");
-      wrapper.style.cssText =
-        "position:fixed;left:-9999px;top:-9999px;width:320px;height:180px;opacity:0;pointer-events:none;z-index:-1;";
-      const inner = document.createElement("div");
-      inner.id = `yt-player-${Date.now()}`;
-      wrapper.appendChild(inner);
-      document.body.appendChild(wrapper);
-      wrapperRef.current = wrapper;
+      if (activeVideoIdRef.current !== videoId) {
+        console.log("[MusicPlayer] Video ID changed while API was loading — aborting");
+        return;
+      }
 
-      playerRef.current = new window.YT.Player(inner.id, {
-        videoId,
-        width: "320",
+      playerRef.current = new window.YT.Player(divId, {
         height: "180",
+        width: "320",
+        videoId,
         playerVars: {
           autoplay: 1,
           loop: music.loop ? 1 : 0,
@@ -122,33 +175,41 @@ export default function MusicPlayer() {
         },
         events: {
           onReady: (e: any) => {
+            console.log("[MusicPlayer] onReady fired — player initialized successfully");
             e.target.setVolume(vol);
             setPlayerReady(true);
-            playAttemptedRef.current = true;
             try {
               e.target.playVideo();
-            } catch {}
+              console.log("[MusicPlayer] playVideo() called");
+            } catch (err) {
+              console.warn("[MusicPlayer] playVideo() threw:", err);
+            }
             setTimeout(() => {
               try {
                 const state = e.target.getPlayerState();
+                console.log("[MusicPlayer] Player state after 1.5s:", state, "(1=playing, 2=paused, -1=unstarted)");
                 if (state !== 1) {
+                  console.log("[MusicPlayer] Autoplay was blocked by browser — showing click prompt");
                   setNeedsClick(true);
                 }
               } catch {}
-            }, 1200);
+            }, 1500);
           },
           onStateChange: (e: any) => {
-            const YT = window.YT;
-            if (!YT) return;
-            if (e.data === YT.PlayerState.PLAYING) {
-              setIsPlaying(true);
-              setNeedsClick(false);
-            } else if (e.data === YT.PlayerState.PAUSED || e.data === YT.PlayerState.ENDED) {
-              setIsPlaying(false);
-            }
+            const stateName: Record<number, string> = { [-1]: "UNSTARTED", 0: "ENDED", 1: "PLAYING", 2: "PAUSED", 3: "BUFFERING", 5: "CUED" };
+            console.log("[MusicPlayer] State changed to:", e.data, stateName[e.data] || "UNKNOWN");
+            if (e.data === 1) { setIsPlaying(true); setNeedsClick(false); }
+            else if (e.data === 2 || e.data === 0) { setIsPlaying(false); }
           },
           onError: (e: any) => {
-            console.warn("[MusicPlayer] YT error code:", e.data);
+            const errors: Record<number, string> = {
+              2: "Invalid video ID",
+              5: "HTML5 player error",
+              100: "Video not found or private",
+              101: "Embedding disabled by owner",
+              150: "Embedding disabled by owner",
+            };
+            console.error("[MusicPlayer] YouTube player error code:", e.data, "—", errors[e.data] || "Unknown error");
           },
         },
       });
@@ -158,8 +219,15 @@ export default function MusicPlayer() {
   }, [music?.enabled, music?.youtubeUrl, music?.loop, isAdmin, destroyPlayer]);
 
   useEffect(() => {
+    if (music?.volume !== undefined && playerRef.current && playerReady) {
+      try { playerRef.current.setVolume(music.volume); setLocalVolume(music.volume); } catch {}
+    }
+  }, [music?.volume, playerReady]);
+
+  useEffect(() => {
     if (!needsClick || !playerRef.current || !playerReady) return;
     const handler = () => {
+      console.log("[MusicPlayer] User clicked — starting music now");
       try { playerRef.current?.playVideo(); } catch {}
       setNeedsClick(false);
     };
@@ -168,21 +236,23 @@ export default function MusicPlayer() {
   }, [needsClick, playerReady]);
 
   const handleVolumeChange = (val: number) => {
-    setVolume(val);
-    if (playerRef.current && playerReady) {
-      try { playerRef.current.setVolume(val); } catch {}
-    }
+    setLocalVolume(val);
+    try { playerRef.current?.setVolume(val); } catch {}
     if (val > 0 && isMuted) {
       try { playerRef.current?.unMute(); } catch {}
       setIsMuted(false);
+    }
+    if (val === 0) {
+      try { playerRef.current?.mute(); } catch {}
+      setIsMuted(true);
     }
   };
 
   const togglePlay = () => {
     if (!playerRef.current || !playerReady) return;
     try {
-      if (isPlaying) playerRef.current.pauseVideo();
-      else playerRef.current.playVideo();
+      if (isPlaying) { playerRef.current.pauseVideo(); console.log("[MusicPlayer] Paused by user"); }
+      else { playerRef.current.playVideo(); console.log("[MusicPlayer] Played by user"); }
     } catch {}
   };
 
@@ -196,35 +266,17 @@ export default function MusicPlayer() {
 
   if (isAdmin) return null;
   if (!music?.enabled || !music?.youtubeUrl || isDismissed) return null;
-  if (!extractYouTubeId(music.youtubeUrl)) return null;
-
-  if (needsClick && isMinimized) {
-    return (
-      <div
-        className="fixed bottom-6 right-6 z-[9990] cursor-pointer"
-        onClick={() => {
-          setIsMinimized(false);
-          try { playerRef.current?.playVideo(); } catch {}
-          setNeedsClick(false);
-        }}
-        data-testid="music-click-prompt"
-      >
-        <div className="w-10 h-10 border-2 border-accent-blue bg-[hsl(0_0%_4%)] flex items-center justify-center animate-pulse">
-          <Music2 className="w-4 h-4 text-accent-blue" />
-        </div>
-      </div>
-    );
-  }
+  if (!extractVideoId(music.youtubeUrl)) return null;
 
   if (isMinimized) {
     return (
       <div
-        className="fixed bottom-6 right-6 z-[9990] flex items-center gap-2 cursor-pointer group"
+        className="fixed bottom-6 right-6 z-[9990] flex items-center gap-2 cursor-pointer"
         onClick={() => setIsMinimized(false)}
         data-testid="music-player-minimized"
       >
-        <div className="w-10 h-10 border-2 border-border/60 bg-[hsl(0_0%_4%)] flex items-center justify-center hover:border-accent-blue transition-colors">
-          <Music2 className={`w-4 h-4 ${isPlaying ? "text-accent-blue animate-pulse" : "text-muted-foreground"}`} />
+        <div className={`w-10 h-10 border-2 flex items-center justify-center transition-colors ${needsClick ? "border-accent-blue animate-pulse" : "border-border/60 hover:border-accent-blue"} bg-[hsl(0_0%_4%)]`}>
+          <Music2 className={`w-4 h-4 ${isPlaying || needsClick ? "text-accent-blue" : "text-muted-foreground"}`} />
         </div>
       </div>
     );
@@ -234,11 +286,11 @@ export default function MusicPlayer() {
     <>
       {needsClick && (
         <div
-          className="fixed bottom-28 right-6 z-[9991] bg-[hsl(0_0%_6%)] border-2 border-accent-blue/60 px-3 py-2 max-w-[200px]"
+          className="fixed bottom-[108px] right-6 z-[9991] bg-[hsl(0_0%_6%)] border-2 border-accent-blue/70 px-3 py-2"
           data-testid="music-autoplay-hint"
         >
-          <p className="text-[10px] font-mono text-accent-blue uppercase tracking-widest">
-            Click anywhere to start music
+          <p className="text-[10px] font-mono text-accent-blue uppercase tracking-widest whitespace-nowrap">
+            🎵 Click anywhere to enable music
           </p>
         </div>
       )}
@@ -251,7 +303,7 @@ export default function MusicPlayer() {
           <div className="flex items-center gap-2">
             <Music2 className={`w-3 h-3 ${isPlaying ? "text-accent-blue" : "text-muted-foreground"}`} />
             <span className="text-[10px] font-mono tracking-luxury uppercase text-muted-foreground">
-              {!playerReady ? "Loading…" : needsClick ? "Tap to play" : isPlaying ? "Now Playing" : "Paused"}
+              {!playerReady ? "Loading…" : needsClick ? "Tap anywhere" : isPlaying ? "Now Playing" : "Paused"}
             </span>
           </div>
           <div className="flex items-center gap-1">
@@ -336,7 +388,7 @@ export default function MusicPlayer() {
               type="range"
               min={0}
               max={100}
-              value={isMuted ? 0 : volume}
+              value={isMuted ? 0 : localVolume}
               onChange={(e) => handleVolumeChange(Number(e.target.value))}
               disabled={!playerReady}
               className="flex-1 h-1 accent-accent-blue cursor-pointer disabled:opacity-30"
