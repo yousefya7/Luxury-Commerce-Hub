@@ -47,7 +47,7 @@ import {
   Download, DollarSign, Plus, Pencil, Trash2, X, Eye, EyeOff, Save, Upload, Loader2,
   CheckSquare, Square, Layers, Shield, Lock, Settings, GripVertical, Mail, Search, Phone, MapPin, Receipt,
   Truck, ChevronDown, ChevronLeft, ChevronRight, XCircle, RefreshCw, Zap, Copy, TriangleAlert, Star, Image, Megaphone,
-  LayoutDashboard, Menu, ArrowLeft, ArrowUpRight, BarChart3
+  LayoutDashboard, Menu, ArrowLeft, ArrowUpRight, BarChart3, Music2
 } from "lucide-react";
 import {
   Select,
@@ -3771,6 +3771,13 @@ function SettingsPanel({ section = "all" }: { section?: "all" | "preorder" | "ga
   const [collectionDirty, setCollectionDirty] = useState(false);
   const [collectionUploading, setCollectionUploading] = useState(false);
 
+  // Music state
+  const [musicEnabled, setMusicEnabled] = useState(false);
+  const [musicUrl, setMusicUrl] = useState("");
+  const [musicLoop, setMusicLoop] = useState(true);
+  const [musicVolume, setMusicVolume] = useState(60);
+  const [musicDirty, setMusicDirty] = useState(false);
+
   const { data: settings, isLoading } = useQuery<{
     maintenanceMode: boolean;
     sitePassword: string;
@@ -3778,6 +3785,10 @@ function SettingsPanel({ section = "all" }: { section?: "all" | "preorder" | "ga
     newArrivalsIds: string[];
     collectionImage: string;
     collectionHeading: string;
+    musicEnabled: boolean;
+    musicYoutubeUrl: string;
+    musicLoop: boolean;
+    musicVolume: number;
   }>({
     queryKey: ["/api/admin/settings"],
   });
@@ -3796,6 +3807,7 @@ function SettingsPanel({ section = "all" }: { section?: "all" | "preorder" | "ga
       }
       setGalleryDirty(false);
       setCollectionDirty(false);
+      setMusicDirty(false);
       toast({ title: "Settings Updated", description: "Changes saved successfully." });
     },
     onError: (err: any) => {
@@ -3823,6 +3835,15 @@ function SettingsPanel({ section = "all" }: { section?: "all" | "preorder" | "ga
       if (settings?.collectionHeading !== undefined) setCollectionHeading(settings.collectionHeading || "THE COLLECTION");
     }
   }, [settings?.collectionImage, settings?.collectionHeading, collectionDirty]);
+
+  useEffect(() => {
+    if (!musicDirty) {
+      if (settings?.musicEnabled !== undefined) setMusicEnabled(settings.musicEnabled);
+      if (settings?.musicYoutubeUrl !== undefined) setMusicUrl(settings.musicYoutubeUrl || "");
+      if (settings?.musicLoop !== undefined) setMusicLoop(settings.musicLoop);
+      if (settings?.musicVolume !== undefined) setMusicVolume(settings.musicVolume ?? 60);
+    }
+  }, [settings?.musicEnabled, settings?.musicYoutubeUrl, settings?.musicLoop, settings?.musicVolume, musicDirty]);
 
   const handleGalleryFileUpload = async (idx: number, file: File) => {
     setGalleryUploading(prev => ({ ...prev, [idx]: true }));
@@ -4031,6 +4052,123 @@ function SettingsPanel({ section = "all" }: { section?: "all" | "preorder" | "ga
             >
               {settingsMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Save className="w-3 h-3 mr-1" />}
               Save Collection Settings
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Music Player */}
+      <div className="border-2 border-border/30 bg-[hsl(0_0%_5%)]" data-testid="section-music" style={{ display: section !== "all" && section !== "site-settings" ? "none" : undefined }}>
+        <div className="flex items-center gap-3 px-6 py-4 border-b-2 border-border/30 bg-[hsl(0_0%_6%)]">
+          <Music2 className="w-4 h-4 text-accent-blue" />
+          <h3 className="font-display text-sm tracking-luxury uppercase">Background Music Player</h3>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* Enable toggle */}
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-xs font-mono tracking-luxury uppercase text-muted-foreground block mb-1">
+                Enable Music Player
+              </label>
+              <p className="text-[11px] text-muted-foreground/60 font-mono">
+                {musicEnabled
+                  ? "A floating player widget is visible to all site visitors."
+                  : "Player is hidden — visitors won't see or hear anything."}
+              </p>
+            </div>
+            <button
+              onClick={() => { setMusicEnabled(!musicEnabled); setMusicDirty(true); }}
+              className={`relative w-14 h-7 border-2 transition-all duration-300 flex items-center ${
+                musicEnabled
+                  ? "bg-[hsl(142,70%,40%)]/20 border-[hsl(142,70%,40%)]"
+                  : "bg-border/20 border-border/50"
+              }`}
+              data-testid="toggle-music-enabled"
+            >
+              <div
+                className={`w-5 h-5 transition-all duration-300 ${
+                  musicEnabled
+                    ? "ml-[26px] bg-[hsl(142,70%,40%)]"
+                    : "ml-0.5 bg-border/60"
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* YouTube URL */}
+          <div>
+            <label className="text-xs font-mono tracking-luxury uppercase text-muted-foreground block mb-2">
+              YouTube URL
+            </label>
+            <Input
+              value={musicUrl}
+              onChange={(e) => { setMusicUrl(e.target.value); setMusicDirty(true); }}
+              placeholder="https://www.youtube.com/watch?v=..."
+              className="border-2 font-mono text-sm h-10 text-white bg-transparent"
+              data-testid="input-music-url"
+            />
+            <p className="text-[10px] text-muted-foreground/50 font-mono mt-1">
+              Paste any YouTube video or playlist link. The player renders audio only.
+            </p>
+          </div>
+
+          {/* Loop + Volume row */}
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <label className="text-xs font-mono tracking-luxury uppercase text-muted-foreground block mb-2">
+                Loop
+              </label>
+              <button
+                onClick={() => { setMusicLoop(!musicLoop); setMusicDirty(true); }}
+                className={`relative w-14 h-7 border-2 transition-all duration-300 flex items-center ${
+                  musicLoop
+                    ? "bg-[hsl(142,70%,40%)]/20 border-[hsl(142,70%,40%)]"
+                    : "bg-border/20 border-border/50"
+                }`}
+                data-testid="toggle-music-loop"
+              >
+                <div
+                  className={`w-5 h-5 transition-all duration-300 ${
+                    musicLoop
+                      ? "ml-[26px] bg-[hsl(142,70%,40%)]"
+                      : "ml-0.5 bg-border/60"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div>
+              <label className="text-xs font-mono tracking-luxury uppercase text-muted-foreground block mb-2">
+                Volume — <span className="text-foreground">{musicVolume}%</span>
+              </label>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={musicVolume}
+                onChange={(e) => { setMusicVolume(Number(e.target.value)); setMusicDirty(true); }}
+                className="w-full h-2 accent-accent-blue cursor-pointer"
+                data-testid="range-music-volume"
+              />
+            </div>
+          </div>
+
+          {/* Save button */}
+          <div className="pt-2">
+            <Button
+              onClick={() => settingsMutation.mutate({
+                musicEnabled,
+                musicYoutubeUrl: musicUrl,
+                musicLoop,
+                musicVolume,
+              })}
+              disabled={settingsMutation.isPending || !musicDirty}
+              className="text-[10px] tracking-luxury uppercase h-10 border-2 border-accent-blue bg-accent-blue text-white btn-liquid no-default-hover-elevate no-default-active-elevate"
+              data-testid="button-save-music"
+            >
+              {settingsMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Save className="w-3 h-3 mr-1" />}
+              Save Music Settings
             </Button>
           </div>
         </div>

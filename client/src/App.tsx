@@ -22,6 +22,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { AudioProvider } from "@/lib/audio";
 import CustomCursor from "@/components/custom-cursor";
+import MusicPlayer from "@/components/music-player";
 
 function Router() {
   return (
@@ -167,6 +168,7 @@ function AppInner() {
             <NavigationLoadingBar />
             <Navbar />
             <Router />
+            <MusicPlayer />
             <Toaster />
           </CartProvider>
         </AudioProvider>
