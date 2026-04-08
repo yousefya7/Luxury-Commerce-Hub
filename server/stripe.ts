@@ -122,6 +122,90 @@ export async function createStripePromo(
   return { couponId: coupon.id, promoCodeId: promoCode.id };
 }
 
+/**
+ * Find an existing Stripe promotion code by its code string.
+ * Returns null if not found.
+ */
+export async function findStripePromoByCode(code: string): Promise<{
+  promoCodeId: string;
+  couponId: string;
+  active: boolean;
+} | null> {
+  const stripe = getStripeClient();
+  try {
+    const promos = await stripe.promotionCodes.list({ code: sanitizePromoCode(code), limit: 10 });
+    if (promos.data.length > 0) {
+      const promo = promos.data[0];
+      const couponId = typeof promo.coupon === "string" ? promo.coupon : promo.coupon.id;
+      return { promoCodeId: promo.id, couponId, active: promo.active };
+    }
+    return null;
+  } catch (e: any) {
+    console.warn("[Stripe] Could not search for promo code:", e?.message);
+    return null;
+  }
+}
+
+/**
+ * Find or create a Stripe promo code.
+ * If an existing (inactive) promo code with the same code name is found, its parent
+ * coupon is deleted first (freeing up the code name), then a fresh pair is created.
+ * If an active promo code already exists, it is linked to directly.
+ */
+export async function findOrCreateStripePromo(
+  code: string,
+  type: "percentage" | "fixed" | "free_shipping",
+  value: number,
+  opts?: { maxRedemptions?: number; expiresAt?: Date }
+): Promise<{ couponId: string; promoCodeId: string }> {
+  const stripe = getStripeClient();
+  const sanitizedCode = sanitizePromoCode(code);
+  const existing = await findStripePromoByCode(sanitizedCode);
+
+  if (existing) {
+    if (existing.active) {
+      console.log(`[Stripe] Linking to existing active promo code ${sanitizedCode} (${existing.promoCodeId})`);
+      return { couponId: existing.couponId, promoCodeId: existing.promoCodeId };
+    }
+    // Inactive promo code found — delete its coupon to free up the code name
+    console.log(`[Stripe] Deleting stale inactive promo code ${sanitizedCode} to allow recreation`);
+    try {
+      await stripe.coupons.del(existing.couponId);
+    } catch (e: any) {
+      console.warn(`[Stripe] Could not delete old coupon ${existing.couponId}:`, e?.message);
+    }
+  }
+
+  return createStripePromo(code, type, value, opts);
+}
+
+/**
+ * Verify a Stripe coupon ID exists. Returns true if valid, false if not found.
+ */
+export async function verifyStripeCoupon(couponId: string): Promise<boolean> {
+  const stripe = getStripeClient();
+  try {
+    await stripe.coupons.retrieve(couponId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Verify a Stripe promotion code ID exists and is active.
+ * Returns 'active' | 'inactive' | 'missing'.
+ */
+export async function verifyStripePromoCode(promoCodeId: string): Promise<"active" | "inactive" | "missing"> {
+  const stripe = getStripeClient();
+  try {
+    const promo = await stripe.promotionCodes.retrieve(promoCodeId);
+    return promo.active ? "active" : "inactive";
+  } catch {
+    return "missing";
+  }
+}
+
 export async function deactivateStripePromoCode(promoCodeId: string): Promise<void> {
   const stripe = getStripeClient();
   try {

@@ -11,7 +11,7 @@ import { randomUUID } from "crypto";
 import { v2 as cloudinary } from "cloudinary";
 import { sendOrderConfirmationSms, sendWelcomeSms, blastSms, twilioConfigured } from "./sms";
 import { sendOrderConfirmationEmail, sendShippingEmail, sendCancellationEmail, blastEmail, sendContactEmail, sendContactConfirmationEmail, resendConfigured } from "./email";
-import { createPaymentIntent, createRefund, calculateTaxAmount, createStripeCoupon, createStripePromo, deleteStripeCoupon, deactivateStripePromoCode, reactivateStripePromoCode, verifyStripeAccount, syncProductToStripe, archiveStripeProduct, sanitizePromoCode } from "./stripe";
+import { createPaymentIntent, createRefund, calculateTaxAmount, createStripeCoupon, createStripePromo, findOrCreateStripePromo, findStripePromoByCode, deleteStripeCoupon, deactivateStripePromoCode, reactivateStripePromoCode, verifyStripeAccount, syncProductToStripe, archiveStripeProduct, sanitizePromoCode, verifyStripeCoupon, verifyStripePromoCode } from "./stripe";
 import { insertPromoCodeSchema } from "@shared/schema";
 
 cloudinary.config({
@@ -1584,11 +1584,11 @@ ${allPages
       }
       const data = parsed.data;
 
-      // Sync to Stripe — create Coupon + Promotion Code; fail loudly if Stripe errors
+      // Use findOrCreateStripePromo — handles stale/duplicate codes automatically
       let stripeCouponId: string | null = null;
       let stripePromoCodeId: string | null = null;
       try {
-        const result = await createStripePromo(
+        const result = await findOrCreateStripePromo(
           data.code,
           data.type as "percentage" | "fixed" | "free_shipping",
           Number(data.value),
@@ -1599,7 +1599,7 @@ ${allPages
         );
         stripeCouponId = result.couponId;
         stripePromoCodeId = result.promoCodeId;
-        console.log(`[Stripe] Created promo ${data.code}: coupon=${stripeCouponId} promo=${stripePromoCodeId}`);
+        console.log(`[Stripe] Synced promo ${data.code}: coupon=${stripeCouponId} promo=${stripePromoCodeId}`);
       } catch (e: any) {
         const msg = e?.message || "Stripe sync failed";
         console.error("[Stripe] Promo creation failed:", msg);
@@ -1619,6 +1619,89 @@ ${allPages
         return res.status(409).json({ message: "A promo code with that name already exists" });
       }
       res.status(500).json({ message: msg });
+    }
+  });
+
+  // ── Sync All Promo Codes to Stripe ────────────────────────────────────────────
+  app.post("/api/admin/promo-codes/sync-all", requireAdmin, async (_req, res) => {
+    try {
+      const codes = await storage.getPromoCodes();
+      const results: { code: string; status: "ok" | "fixed" | "error"; message?: string }[] = [];
+
+      for (const pc of codes) {
+        try {
+          let couponOk = pc.stripeCouponId ? await verifyStripeCoupon(pc.stripeCouponId) : false;
+          let promoOk = pc.stripePromoCodeId ? (await verifyStripePromoCode(pc.stripePromoCodeId)) !== "missing" : false;
+
+          if (couponOk && promoOk) {
+            results.push({ code: pc.code, status: "ok" });
+            continue;
+          }
+
+          // Missing or invalid Stripe IDs — find or recreate
+          console.log(`[Stripe] Syncing ${pc.code}: couponOk=${couponOk} promoOk=${promoOk}`);
+          const result = await findOrCreateStripePromo(
+            pc.code,
+            pc.type as "percentage" | "fixed" | "free_shipping",
+            Number(pc.value)
+          );
+          await storage.updatePromoCode(pc.id, {
+            stripeCouponId: result.couponId,
+            stripePromoCodeId: result.promoCodeId,
+          });
+          results.push({ code: pc.code, status: "fixed", message: `Linked to ${result.promoCodeId}` });
+        } catch (e: any) {
+          results.push({ code: pc.code, status: "error", message: e?.message || "Unknown error" });
+        }
+      }
+
+      res.json({ results });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── Force Sync Single Promo Code ─────────────────────────────────────────────
+  app.post("/api/admin/promo-codes/:id/sync", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params as { id: string };
+      const all = await storage.getPromoCodes();
+      const pc = all.find((p) => p.id === id);
+      if (!pc) return res.status(404).json({ message: "Promo code not found" });
+
+      const couponOk = pc.stripeCouponId ? await verifyStripeCoupon(pc.stripeCouponId) : false;
+      const promoStatus = pc.stripePromoCodeId ? await verifyStripePromoCode(pc.stripePromoCodeId) : "missing";
+
+      if (couponOk && promoStatus !== "missing") {
+        // Already synced — ensure active state matches
+        if (promoStatus === "active" && !pc.active) {
+          await deactivateStripePromoCode(pc.stripePromoCodeId!);
+        } else if (promoStatus === "inactive" && pc.active) {
+          await reactivateStripePromoCode(pc.stripePromoCodeId!);
+        }
+        const updated = await storage.getPromoCodes().then((cs) => cs.find((c) => c.id === id));
+        return res.json({ synced: true, message: "Already synced — active state reconciled.", updated });
+      }
+
+      // Need to recreate Stripe records
+      const result = await findOrCreateStripePromo(
+        pc.code,
+        pc.type as "percentage" | "fixed" | "free_shipping",
+        Number(pc.value)
+      );
+
+      // Sync active state
+      if (!pc.active) {
+        await deactivateStripePromoCode(result.promoCodeId).catch(() => {});
+      }
+
+      const updated = await storage.updatePromoCode(id, {
+        stripeCouponId: result.couponId,
+        stripePromoCodeId: result.promoCodeId,
+      });
+      res.json({ synced: true, message: `Synced to Stripe: ${result.promoCodeId}`, updated });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 
@@ -1677,11 +1760,27 @@ ${allPages
       const { id } = req.params as { id: string };
       const existing = (await storage.getPromoCodes()).find((p) => p.id === id);
       if (existing) {
+        // Deactivate the Stripe promotion code first (best-effort)
         if (existing.stripePromoCodeId) {
-          await deactivateStripePromoCode(existing.stripePromoCodeId).catch(() => {});
+          try {
+            await deactivateStripePromoCode(existing.stripePromoCodeId);
+          } catch (e: any) {
+            if (!e?.message?.includes("No such promotion_code")) {
+              console.warn(`[Stripe] Could not deactivate promo code ${existing.stripePromoCodeId}:`, e?.message);
+            }
+          }
         }
+        // Delete the Stripe coupon — this frees up the promo code name for reuse.
+        // A deleted coupon removes all associated promotion codes from Stripe's namespace.
         if (existing.stripeCouponId) {
-          await deleteStripeCoupon(existing.stripeCouponId).catch(() => {});
+          try {
+            await deleteStripeCoupon(existing.stripeCouponId);
+            console.log(`[Stripe] Deleted coupon ${existing.stripeCouponId} for promo code ${existing.code}`);
+          } catch (e: any) {
+            if (!e?.message?.includes("No such coupon")) {
+              console.warn(`[Stripe] Could not delete coupon ${existing.stripeCouponId}:`, e?.message);
+            }
+          }
         }
       }
       const deleted = await storage.deletePromoCode(id);

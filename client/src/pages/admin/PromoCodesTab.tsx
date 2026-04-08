@@ -17,7 +17,7 @@ import {
 import type { PromoCode } from "@shared/schema";
 import {
   Plus, Trash2, ToggleLeft, ToggleRight, Tag, Loader2, X, Check,
-  Pencil, AlertCircle, Zap, RefreshCw,
+  Pencil, AlertCircle, Zap, RefreshCw, CheckCircle2, AlertTriangle, ShieldCheck,
 } from "lucide-react";
 
 type PromoType = "percentage" | "fixed" | "free_shipping";
@@ -76,6 +76,36 @@ function discountLabel(code: PromoCode) {
   if (code.type === "free_shipping") return "Free Shipping";
   if (code.type === "percentage") return `${Number(code.value)}% off`;
   return `$${Number(code.value).toFixed(2)} off`;
+}
+
+function SyncBadge({ code }: { code: PromoCode }) {
+  const hasCoupon = !!code.stripeCouponId;
+  const hasPromo = !!(code as any).stripePromoCodeId;
+  const fullysynced = hasCoupon && hasPromo;
+  const partiallysynced = hasCoupon || hasPromo;
+
+  if (fullysynced) {
+    return (
+      <div className="flex items-center gap-1">
+        <CheckCircle2 className="w-3 h-3 text-green-400 flex-shrink-0" />
+        <span className="text-[10px] font-mono text-green-400">Synced</span>
+      </div>
+    );
+  }
+  if (partiallysynced) {
+    return (
+      <div className="flex items-center gap-1">
+        <AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0" />
+        <span className="text-[10px] font-mono text-amber-400">Partial</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1">
+      <AlertCircle className="w-3 h-3 text-red-400 flex-shrink-0" />
+      <span className="text-[10px] font-mono text-red-400">Not synced</span>
+    </div>
+  );
 }
 
 function PromoModal({
@@ -332,7 +362,7 @@ function PromoModal({
         {mode === "create" && (
           <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground/50 border border-border/20 px-3 py-2">
             <Zap className="w-3 h-3 text-accent-blue/50 flex-shrink-0" />
-            Creates a Stripe Coupon + Promotion Code automatically. Code will not be saved if Stripe fails.
+            Creates a Stripe Coupon + Promotion Code automatically. If an identical code exists in Stripe, it will be linked or replaced automatically.
           </div>
         )}
 
@@ -369,6 +399,8 @@ export function PromoCodesTab() {
   const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
   const [editTarget, setEditTarget] = useState<PromoCode | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PromoCode | null>(null);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [syncAllResults, setSyncAllResults] = useState<{ code: string; status: string; message?: string }[] | null>(null);
 
   const { data: codes = [], isLoading } = useQuery<PromoCode[]>({
     queryKey: ["/api/admin/promo-codes"],
@@ -380,7 +412,7 @@ export function PromoCodesTab() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/promo-codes"] });
-      toast({ title: "Status updated" });
+      toast({ title: "Status updated", description: "Stripe sync applied." });
     },
     onError: (err: any) =>
       toast({ title: "Error updating status", description: err.message, variant: "destructive" }),
@@ -393,11 +425,46 @@ export function PromoCodesTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/promo-codes"] });
       setDeleteTarget(null);
-      toast({ title: "Promo code deleted" });
+      toast({ title: "Promo code deleted", description: "Removed from both the dashboard and Stripe." });
     },
     onError: (err: any) =>
       toast({ title: "Delete failed", description: err.message, variant: "destructive" }),
   });
+
+  const syncAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/promo-codes/sync-all", {});
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/promo-codes"] });
+      setSyncAllResults(data.results);
+      const fixed = data.results.filter((r: any) => r.status === "fixed").length;
+      const errors = data.results.filter((r: any) => r.status === "error").length;
+      const ok = data.results.filter((r: any) => r.status === "ok").length;
+      toast({
+        title: "Sync All Complete",
+        description: `${ok} already synced, ${fixed} fixed${errors > 0 ? `, ${errors} failed` : ""}.`,
+        variant: errors > 0 ? "destructive" : "default",
+      });
+    },
+    onError: (err: any) =>
+      toast({ title: "Sync All failed", description: err.message, variant: "destructive" }),
+  });
+
+  const handleForceSync = async (code: PromoCode) => {
+    setSyncingId(code.id);
+    try {
+      const res = await apiRequest("POST", `/api/admin/promo-codes/${code.id}/sync`, {});
+      const data = await res.json();
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/promo-codes"] });
+      toast({ title: `${code.code} synced`, description: data.message || "Stripe sync complete." });
+    } catch (err: any) {
+      toast({ title: "Sync failed", description: err.message, variant: "destructive" });
+    } finally {
+      setSyncingId(null);
+    }
+  };
 
   const openCreate = () => {
     setEditTarget(null);
@@ -420,23 +487,69 @@ export function PromoCodesTab() {
   const isAtLimit = (code: PromoCode) =>
     code.usageLimit !== null && code.usageLimit !== undefined && code.usageCount >= code.usageLimit;
 
+  const isFullySynced = (code: PromoCode) =>
+    !!code.stripeCouponId && !!(code as any).stripePromoCodeId;
+
   return (
     <div className="space-y-6" data-testid="panel-promo-codes">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h2 className="font-display text-xl tracking-luxury uppercase">Promo Codes</h2>
           <p className="text-xs text-muted-foreground font-mono mt-1">
-            Each code syncs to Stripe as a Coupon + Promotion Code.
+            Each code syncs to Stripe as a Coupon + Promotion Code in real time.
           </p>
         </div>
-        <Button
-          onClick={openCreate}
-          className="border-2 border-accent-blue bg-accent-blue text-white text-xs tracking-luxury uppercase h-10 px-5 hover:bg-accent-blue/90"
-          data-testid="button-create-promo"
-        >
-          <Plus className="w-3 h-3 mr-2" /> New Code
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={() => { setSyncAllResults(null); syncAllMutation.mutate(); }}
+            disabled={syncAllMutation.isPending || isLoading || codes.length === 0}
+            variant="outline"
+            className="border-2 border-border/50 text-xs tracking-luxury uppercase h-10 px-4 gap-2"
+            data-testid="button-sync-all-promos"
+          >
+            {syncAllMutation.isPending ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <ShieldCheck className="w-3 h-3" />
+            )}
+            Sync All
+          </Button>
+          <Button
+            onClick={openCreate}
+            className="border-2 border-accent-blue bg-accent-blue text-white text-xs tracking-luxury uppercase h-10 px-5 hover:bg-accent-blue/90"
+            data-testid="button-create-promo"
+          >
+            <Plus className="w-3 h-3 mr-2" /> New Code
+          </Button>
+        </div>
       </div>
+
+      {/* Sync All Results Banner */}
+      {syncAllResults && (
+        <div className="border-2 border-border/30 bg-[hsl(0_0%_5%)] p-4 space-y-2">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] uppercase tracking-luxury font-bold text-muted-foreground">Sync All Results</p>
+            <button onClick={() => setSyncAllResults(null)} className="text-muted-foreground/40 hover:text-foreground">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          {syncAllResults.map((r) => (
+            <div key={r.code} className="flex items-center gap-3">
+              {r.status === "ok" && <CheckCircle2 className="w-3 h-3 text-green-400 flex-shrink-0" />}
+              {r.status === "fixed" && <Zap className="w-3 h-3 text-accent-blue flex-shrink-0" />}
+              {r.status === "error" && <AlertCircle className="w-3 h-3 text-red-400 flex-shrink-0" />}
+              <span className="text-xs font-mono font-bold w-28">{r.code}</span>
+              <span className={`text-[10px] font-mono ${
+                r.status === "ok" ? "text-green-400/70" :
+                r.status === "fixed" ? "text-accent-blue/80" :
+                "text-red-400/80"
+              }`}>
+                {r.status === "ok" ? "Already synced" : r.status === "fixed" ? `Fixed — ${r.message}` : `Error: ${r.message}`}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
@@ -453,14 +566,14 @@ export function PromoCodesTab() {
       ) : (
         <div className="border-2 border-border/30 overflow-hidden overflow-x-auto">
           {/* Header */}
-          <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-3 bg-muted/20 border-b-2 border-border/30 min-w-[800px]">
+          <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-3 bg-muted/20 border-b-2 border-border/30 min-w-[900px]">
             {[
               { label: "Code", cols: "col-span-2" },
               { label: "Discount", cols: "col-span-2" },
               { label: "Min Order", cols: "col-span-1" },
               { label: "Expires", cols: "col-span-2" },
               { label: "Usage", cols: "col-span-1" },
-              { label: "Stripe", cols: "col-span-2" },
+              { label: "Stripe Sync", cols: "col-span-2" },
               { label: "Status", cols: "col-span-1" },
               { label: "", cols: "col-span-1" },
             ].map(({ label, cols }) => (
@@ -477,12 +590,14 @@ export function PromoCodesTab() {
             const expired = isExpired(code);
             const limitHit = isAtLimit(code);
             const broken = expired || limitHit;
+            const syncing = syncingId === code.id;
+            const synced = isFullySynced(code);
             return (
               <div
                 key={code.id}
                 className={`grid grid-cols-2 lg:grid-cols-12 gap-3 px-4 py-4 items-center transition-colors hover:bg-muted/10 ${
                   idx < codes.length - 1 ? "border-b border-border/20" : ""
-                }`}
+                } min-w-[900px]`}
                 data-testid={`row-promo-${code.id}`}
               >
                 {/* Code */}
@@ -540,25 +655,26 @@ export function PromoCodesTab() {
                 </div>
 
                 {/* Stripe sync status */}
-                <div className="lg:col-span-2 flex flex-col gap-0.5">
-                  {code.stripeCouponId ? (
-                    <span className="text-[10px] font-mono text-green-400/80 flex items-center gap-1">
-                      <Zap className="w-3 h-3" /> Coupon ✓
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-mono text-amber-500/70 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" /> No coupon
-                    </span>
-                  )}
-                  {(code as any).stripePromoCodeId ? (
-                    <span className="text-[10px] font-mono text-green-400/80 flex items-center gap-1">
-                      <Zap className="w-3 h-3" /> Promo code ✓
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-mono text-amber-500/70 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" /> No promo code
-                    </span>
-                  )}
+                <div className="lg:col-span-2 flex flex-col gap-1">
+                  <SyncBadge code={code} />
+                  <button
+                    onClick={() => handleForceSync(code)}
+                    disabled={syncing}
+                    className={`flex items-center gap-1 text-[10px] font-mono transition-colors mt-0.5 w-fit ${
+                      synced
+                        ? "text-muted-foreground/40 hover:text-muted-foreground"
+                        : "text-accent-blue/80 hover:text-accent-blue"
+                    }`}
+                    data-testid={`button-sync-promo-${code.id}`}
+                    title="Force sync this promo code with Stripe"
+                  >
+                    {syncing ? (
+                      <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-2.5 h-2.5" />
+                    )}
+                    {syncing ? "Syncing…" : "Force Sync"}
+                  </button>
                 </div>
 
                 {/* Active toggle */}
@@ -630,8 +746,9 @@ export function PromoCodesTab() {
             </AlertDialogTitle>
             <AlertDialogDescription className="text-xs font-mono">
               This will permanently delete{" "}
-              <span className="text-white font-bold">{deleteTarget?.code}</span> from the database
-              and deactivate it in Stripe. Orders already placed are unaffected.
+              <span className="text-white font-bold">{deleteTarget?.code}</span> from both the dashboard and Stripe.
+              The code name will be freed up and can be recreated immediately.
+              Orders already placed are unaffected.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -646,7 +763,7 @@ export function PromoCodesTab() {
               {deleteMutation.isPending ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                "Delete"
+                "Delete & Remove from Stripe"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
