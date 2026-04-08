@@ -53,11 +53,11 @@ export default function Home() {
   const { muted, toggleMute } = useAudio();
 
   const DEFAULT_GALLERY = [
-    "/images/gallery/jacket-graffiti-duo.jpg",
-    "/images/gallery/chat-portrait-tee.jpg",
-    "/images/gallery/jacket-garage-action.jpg",
-    "/images/gallery/chat-stairs-duo.jpg",
-    "/images/gallery/jacket-sidewalk-duo.jpg",
+    "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619296/resilient/gallery/jacket-graffiti-duo.jpg",
+    "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619295/resilient/gallery/chat-portrait-tee.jpg",
+    "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619298/resilient/gallery/jacket-garage-action.jpg",
+    "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619301/resilient/gallery/chat-stairs-duo.jpg",
+    "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619303/resilient/gallery/jacket-sidewalk-duo.jpg",
     "",
     "",
     "",

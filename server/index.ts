@@ -62,11 +62,16 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  const { seedDatabase } = await import("./seed");
+  const { seedDatabase, migrateGalleryImages } = await import("./seed");
   try {
     await seedDatabase();
   } catch (e) {
     console.error("Seed error:", e);
+  }
+  try {
+    await migrateGalleryImages();
+  } catch (e) {
+    console.error("Gallery migration error:", e);
   }
 
   await registerRoutes(httpServer, app);

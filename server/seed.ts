@@ -3,6 +3,154 @@ import { db } from "./db";
 import { products, stock, categories } from "@shared/schema";
 import { inArray } from "drizzle-orm";
 import { pool } from "./db";
+import { readFileSync, existsSync } from "fs";
+import { resolve } from "path";
+import { v2 as cloudinary } from "cloudinary";
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_API_KEY,
+  api_key: process.env.CLOUDINARY_API_SECRET,
+  api_secret: process.env.CLOUDINARY_CLOUD_NAME,
+});
+
+const GALLERY_SEED = [
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619295/resilient/gallery/chat-portrait-tee.jpg", alt: "Being Resilient Defines Character", displayOrder: 0 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619296/resilient/gallery/jacket-graffiti-duo.jpg", alt: "Jacket Drop — Graffiti Wall", displayOrder: 1 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619297/resilient/gallery/pt2-elliston-duo.png", alt: "Elliston Place — Hoodie Duo", displayOrder: 2 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619298/resilient/gallery/jacket-garage-action.jpg", alt: "Parking Garage Session", displayOrder: 3 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619299/resilient/gallery/chat-knight-tee.jpg", alt: "Knight Tee Editorial", displayOrder: 4 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619300/resilient/gallery/jacket-rooftop.jpg", alt: "Rooftop Session", displayOrder: 5 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619301/resilient/gallery/chat-stairs-duo.jpg", alt: "Fire Escape — Golden Hour", displayOrder: 6 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619301/resilient/gallery/jacket-mural-front.jpg", alt: "Bubble Mural", displayOrder: 7 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619302/resilient/gallery/chat-donuts.jpg", alt: "Donut Shop Vibes", displayOrder: 8 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619303/resilient/gallery/jacket-sidewalk-duo.jpg", alt: "Sidewalk Duo", displayOrder: 9 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619304/resilient/gallery/chat-wall-lean.jpg", alt: "Character Tee Portrait", displayOrder: 10 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619305/resilient/gallery/jacket-elevator-solo.jpg", alt: "Elevator — Graffiti", displayOrder: 11 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619305/resilient/gallery/chat-stairs-crew.jpg", alt: "Crew on Steps", displayOrder: 12 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619306/resilient/gallery/jacket-mural-hat.jpg", alt: "Mural Series II", displayOrder: 13 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619307/resilient/gallery/chat-flannels.jpg", alt: "Resilient Flannels", displayOrder: 14 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619308/resilient/gallery/pt2-donut-trio.jpg", alt: "Donut Spot — Trio", displayOrder: 15 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619309/resilient/gallery/jacket-storefront.jpg", alt: "Night Storefront", displayOrder: 16 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619309/resilient/gallery/chat-profile.jpg", alt: "Profile Shot", displayOrder: 17 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619310/resilient/gallery/jacket-rooftop-drone.jpg", alt: "Rooftop — Drone", displayOrder: 18 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619311/resilient/gallery/chat-duo-street.jpg", alt: "Street Duo", displayOrder: 19 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619312/resilient/gallery/jacket-bikeroute.jpg", alt: "Bike Route — Night", displayOrder: 20 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619313/resilient/gallery/jacket-mural-solo.jpg", alt: "Mural Series", displayOrder: 21 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619314/resilient/gallery/chat-car-lean.jpg", alt: "Car Lean", displayOrder: 22 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619315/resilient/gallery/jacket-night-sign.jpg", alt: "Night Sign", displayOrder: 23 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619316/resilient/gallery/jacket-phone.jpg", alt: "Candid — Phone Check", displayOrder: 24 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619317/resilient/gallery/jacket-elliston.jpg", alt: "Elliston Place", displayOrder: 25 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619318/resilient/gallery/jacket-flatlay-drone.jpg", alt: "Jacket — Overhead", displayOrder: 26 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619319/resilient/gallery/chat-balcony.jpg", alt: "Balcony Shot", displayOrder: 27 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619319/resilient/gallery/chat-alley.jpg", alt: "Alley Session", displayOrder: 28 },
+  { src: "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619320/resilient/gallery/jacket-flatlay.jpg", alt: "Resilient Jacket — Flat Lay", displayOrder: 29 },
+];
+
+const HOMEPAGE_GALLERY_DEFAULT = JSON.stringify([
+  "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619296/resilient/gallery/jacket-graffiti-duo.jpg",
+  "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619295/resilient/gallery/chat-portrait-tee.jpg",
+  "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619298/resilient/gallery/jacket-garage-action.jpg",
+  "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619301/resilient/gallery/chat-stairs-duo.jpg",
+  "https://res.cloudinary.com/dgawn40ku/image/upload/v1775619303/resilient/gallery/jacket-sidewalk-duo.jpg",
+  "", "", "",
+]);
+
+async function uploadLocalToCloudinary(filePath: string, publicId: string): Promise<string> {
+  return new Promise((resolve_fn, reject) => {
+    const buffer = readFileSync(filePath);
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: "resilient/gallery", public_id: publicId, overwrite: true, resource_type: "image" },
+      (err, result) => {
+        if (err || !result) return reject(err || new Error("No result"));
+        resolve_fn(result.secure_url);
+      }
+    );
+    stream.end(buffer);
+  });
+}
+
+/**
+ * Migrate any gallery_images records with local /images/gallery/ paths to Cloudinary.
+ * Also seeds the gallery if empty. Runs at startup — safe to call on every boot.
+ */
+export async function migrateGalleryImages(): Promise<void> {
+  const client = await pool.connect();
+  try {
+    // Seed gallery if empty
+    const countRes = await client.query("SELECT COUNT(*) FROM gallery_images");
+    if (parseInt(countRes.rows[0].count, 10) === 0) {
+      console.log("[gallery] Empty gallery — seeding with Cloudinary URLs...");
+      for (const img of GALLERY_SEED) {
+        await client.query(
+          "INSERT INTO gallery_images (id, src, alt, display_order) VALUES (gen_random_uuid(), $1, $2, $3)",
+          [img.src, img.alt, img.displayOrder]
+        );
+      }
+      console.log("[gallery] Gallery seeded.");
+    }
+
+    // Migrate any local-path records to Cloudinary
+    const localRes = await client.query(
+      "SELECT id, src FROM gallery_images WHERE src NOT LIKE 'http%'"
+    );
+    if (localRes.rows.length > 0) {
+      console.log(`[gallery] Migrating ${localRes.rows.length} local-path images to Cloudinary...`);
+      for (const row of localRes.rows) {
+        const localName = row.src.replace(/^\/images\/gallery\//, "");
+        const filePath = resolve("client/public/images/gallery", localName);
+        const publicId = localName.replace(/\.[^.]+$/, "");
+        if (existsSync(filePath)) {
+          try {
+            const url = await uploadLocalToCloudinary(filePath, publicId);
+            await client.query("UPDATE gallery_images SET src = $1 WHERE id = $2", [url, row.id]);
+            console.log(`[gallery] Migrated ${localName} → ${url}`);
+          } catch (e: any) {
+            console.error(`[gallery] Migration failed for ${localName}:`, e.message);
+          }
+        } else {
+          console.warn(`[gallery] Local file missing for ${row.src} — skipping`);
+        }
+      }
+    }
+
+    // Ensure homepage_gallery_images setting exists and uses Cloudinary URLs
+    const settingRes = await client.query(
+      "SELECT value FROM site_settings WHERE key = 'homepage_gallery_images'"
+    );
+    if (settingRes.rows.length === 0) {
+      await client.query(
+        "INSERT INTO site_settings (key, value) VALUES ('homepage_gallery_images', $1) ON CONFLICT (key) DO NOTHING",
+        [HOMEPAGE_GALLERY_DEFAULT]
+      );
+      console.log("[gallery] Inserted homepage_gallery_images setting.");
+    } else {
+      // Check if it contains local paths and migrate them
+      let imgs: string[] = [];
+      try { imgs = JSON.parse(settingRes.rows[0].value); } catch {}
+      const hasLocal = imgs.some((u) => u && !u.startsWith("http"));
+      if (hasLocal) {
+        const updated = await Promise.all(imgs.map(async (u) => {
+          if (!u || u.startsWith("http")) return u;
+          const localName = u.replace(/^\/images\/gallery\//, "");
+          const { rows } = await client.query(
+            "SELECT src FROM gallery_images WHERE src LIKE $1",
+            [`%${localName.replace(/\.[^.]+$/, "")}%`]
+          );
+          return rows[0]?.src || u;
+        }));
+        await client.query(
+          "UPDATE site_settings SET value = $1 WHERE key = 'homepage_gallery_images'",
+          [JSON.stringify(updated)]
+        );
+        console.log("[gallery] Updated homepage_gallery_images to Cloudinary URLs.");
+      }
+    }
+  } catch (e: any) {
+    console.error("[gallery] Migration error:", e.message);
+  } finally {
+    client.release();
+  }
+}
 
 const REAL_PRODUCTS = [
   {
