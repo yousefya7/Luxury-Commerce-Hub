@@ -3838,8 +3838,9 @@ function SettingsPanel({ section = "all" }: { section?: "all" | "preorder" | "ga
 
   useEffect(() => {
     if (!musicDirty) {
+      const url = settings?.musicYoutubeUrl || "";
       if (settings?.musicEnabled !== undefined) setMusicEnabled(settings.musicEnabled);
-      if (settings?.musicYoutubeUrl !== undefined) setMusicUrl(settings.musicYoutubeUrl || "");
+      if (settings?.musicYoutubeUrl !== undefined) setMusicUrl(url);
       if (settings?.musicLoop !== undefined) setMusicLoop(settings.musicLoop);
       if (settings?.musicVolume !== undefined) setMusicVolume(settings.musicVolume ?? 60);
     }
@@ -4154,15 +4155,48 @@ function SettingsPanel({ section = "all" }: { section?: "all" | "preorder" | "ga
             </div>
           </div>
 
+          {/* Warning: URL set but disabled */}
+          {musicUrl.trim() && !musicEnabled && (
+            <div className="border-2 border-amber-500/60 bg-amber-500/10 px-3 py-2 flex items-center justify-between gap-3">
+              <div className="flex items-start gap-2 flex-1 min-w-0">
+                <span className="text-amber-400 text-sm font-bold flex-shrink-0">⚠</span>
+                <p className="text-[11px] font-mono text-amber-400/90">
+                  Music is <strong>DISABLED</strong> — a URL is saved but the player won't appear on the site.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setMusicEnabled(true);
+                  setMusicDirty(true);
+                  settingsMutation.mutate({
+                    musicEnabled: true,
+                    musicYoutubeUrl: musicUrl,
+                    musicLoop,
+                    musicVolume,
+                  });
+                }}
+                disabled={settingsMutation.isPending}
+                className="flex-shrink-0 text-[10px] font-mono uppercase tracking-widest border border-amber-500/60 text-amber-400 px-3 py-1 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                data-testid="button-activate-music"
+              >
+                Activate Now
+              </button>
+            </div>
+          )}
+
           {/* Save button */}
           <div className="pt-2">
             <Button
-              onClick={() => settingsMutation.mutate({
-                musicEnabled,
-                musicYoutubeUrl: musicUrl,
-                musicLoop,
-                musicVolume,
-              })}
+              onClick={() => {
+                const effectiveEnabled = musicUrl.trim().length > 0 ? true : musicEnabled;
+                if (effectiveEnabled !== musicEnabled) setMusicEnabled(effectiveEnabled);
+                settingsMutation.mutate({
+                  musicEnabled: effectiveEnabled,
+                  musicYoutubeUrl: musicUrl,
+                  musicLoop,
+                  musicVolume,
+                });
+              }}
               disabled={settingsMutation.isPending || !musicDirty}
               className="text-[10px] tracking-luxury uppercase h-10 border-2 border-accent-blue bg-accent-blue text-white btn-liquid no-default-hover-elevate no-default-active-elevate"
               data-testid="button-save-music"
