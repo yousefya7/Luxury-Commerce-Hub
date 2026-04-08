@@ -76,6 +76,20 @@ export async function createStripeCoupon(
   return coupon.id;
 }
 
+/**
+ * Sanitize a promo code to comply with Stripe's promotion code format:
+ * only letters, numbers, hyphens, and underscores are allowed.
+ * Spaces are converted to underscores; all other disallowed chars are removed.
+ * Result is uppercased.
+ */
+export function sanitizePromoCode(raw: string): string {
+  return raw
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^A-Za-z0-9\-_]/g, "")
+    .toUpperCase();
+}
+
 export async function createStripePromo(
   code: string,
   type: "percentage" | "fixed" | "free_shipping",
@@ -83,22 +97,23 @@ export async function createStripePromo(
   opts?: { maxRedemptions?: number; expiresAt?: Date }
 ): Promise<{ couponId: string; promoCodeId: string }> {
   const stripe = getStripeClient();
+  const sanitizedCode = sanitizePromoCode(code);
 
   const couponParams: Stripe.CouponCreateParams = {
-    name: `RESILIENT — ${code.toUpperCase()}`,
+    name: `RESILIENT — ${sanitizedCode}`,
     ...(type === "percentage"
       ? { percent_off: value }
       : type === "fixed"
       ? { amount_off: Math.round(value * 100), currency: "usd" }
       : { percent_off: 100 }),
     duration: "once",
-    metadata: { resilient_code: code.toUpperCase() },
+    metadata: { resilient_code: sanitizedCode },
   };
   const coupon = await stripe.coupons.create(couponParams);
 
   const promoParams: Stripe.PromotionCodeCreateParams = {
     coupon: coupon.id,
-    code: code.toUpperCase(),
+    code: sanitizedCode,
     ...(opts?.maxRedemptions ? { max_redemptions: opts.maxRedemptions } : {}),
     ...(opts?.expiresAt ? { expires_at: Math.floor(opts.expiresAt.getTime() / 1000) } : {}),
   };

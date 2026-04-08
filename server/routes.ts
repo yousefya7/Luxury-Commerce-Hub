@@ -11,7 +11,7 @@ import { randomUUID } from "crypto";
 import { v2 as cloudinary } from "cloudinary";
 import { sendOrderConfirmationSms, sendWelcomeSms, blastSms, twilioConfigured } from "./sms";
 import { sendOrderConfirmationEmail, sendShippingEmail, sendCancellationEmail, blastEmail, sendContactEmail, sendContactConfirmationEmail, resendConfigured } from "./email";
-import { createPaymentIntent, createRefund, calculateTaxAmount, createStripeCoupon, createStripePromo, deleteStripeCoupon, deactivateStripePromoCode, reactivateStripePromoCode, verifyStripeAccount, syncProductToStripe, archiveStripeProduct } from "./stripe";
+import { createPaymentIntent, createRefund, calculateTaxAmount, createStripeCoupon, createStripePromo, deleteStripeCoupon, deactivateStripePromoCode, reactivateStripePromoCode, verifyStripeAccount, syncProductToStripe, archiveStripeProduct, sanitizePromoCode } from "./stripe";
 import { insertPromoCodeSchema } from "@shared/schema";
 
 cloudinary.config({
@@ -1569,7 +1569,7 @@ ${allPages
 
       const created = await storage.createPromoCode({
         ...data,
-        code: data.code.toUpperCase(),
+        code: sanitizePromoCode(data.code),
         stripeCouponId,
         stripePromoCodeId,
       });

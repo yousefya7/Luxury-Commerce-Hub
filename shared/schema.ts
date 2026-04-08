@@ -128,7 +128,15 @@ export const insertCustomerSchema = createInsertSchema(customers).omit({ id: tru
 export const insertOrderSchema = createInsertSchema(orders).omit({ id: true, createdAt: true });
 export const insertSmsSubscriberSchema = createInsertSchema(smsSubscribers).omit({ id: true, createdAt: true });
 export const insertCategorySchema = createInsertSchema(categories).omit({ id: true, createdAt: true });
-export const insertPromoCodeSchema = createInsertSchema(promoCodes).omit({ id: true, createdAt: true, usageCount: true });
+export const insertPromoCodeSchema = createInsertSchema(promoCodes)
+  .omit({ id: true, createdAt: true, usageCount: true })
+  .extend({
+    expirationDate: z
+      .union([z.string(), z.date()])
+      .nullable()
+      .optional()
+      .transform((val) => (val ? new Date(val as any) : null)),
+  });
 
 export type Product = typeof products.$inferSelect;
 export type InsertProduct = z.infer<typeof insertProductSchema>;

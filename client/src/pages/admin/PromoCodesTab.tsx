@@ -22,6 +22,18 @@ import {
 
 type PromoType = "percentage" | "fixed" | "free_shipping";
 
+function sanitizePromoCode(raw: string): string {
+  return raw
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^A-Za-z0-9\-_]/g, "")
+    .toUpperCase();
+}
+
+function isValidPromoCode(code: string): boolean {
+  return /^[A-Z0-9\-_]+$/.test(code);
+}
+
 const TYPE_LABELS: Record<PromoType, string> = {
   percentage: "% Off",
   fixed: "$ Off",
@@ -88,8 +100,12 @@ function PromoModal({
     setForm((f) => ({ ...f, [k]: v }));
 
   const handleSave = async () => {
-    if (!form.code.trim()) {
+    const cleanCode = sanitizePromoCode(form.code);
+    if (!cleanCode) {
       return toast({ title: "Code is required", variant: "destructive" });
+    }
+    if (!isValidPromoCode(cleanCode)) {
+      return toast({ title: "Invalid code", description: "Only letters, numbers, hyphens, and underscores are allowed.", variant: "destructive" });
     }
     if (form.type !== "free_shipping" && !form.value) {
       return toast({ title: "Discount value is required", variant: "destructive" });
@@ -99,7 +115,7 @@ function PromoModal({
     setStripeError(null);
 
     const payload: Record<string, any> = {
-      code: form.code.toUpperCase().trim(),
+      code: cleanCode,
       type: form.type,
       value: form.type === "free_shipping" ? "0" : form.value,
       active: form.active,
@@ -116,7 +132,7 @@ function PromoModal({
       }
       await queryClient.invalidateQueries({ queryKey: ["/api/admin/promo-codes"] });
       toast({
-        title: mode === "create" ? `${payload.code} created` : "Promo code updated",
+        title: mode === "create" ? `${cleanCode} created` : "Promo code updated",
         description: mode === "create" ? "Synced to Stripe as a Coupon + Promotion Code." : "Changes saved.",
       });
       onSaved();
@@ -172,10 +188,22 @@ function PromoModal({
             data-testid="input-promo-code"
             placeholder="e.g. SUMMER20"
             value={form.code}
-            onChange={(e) => field("code", e.target.value.toUpperCase())}
+            onChange={(e) => {
+              const raw = e.target.value;
+              const sanitized = raw
+                .replace(/\s+/g, "_")
+                .replace(/[^A-Za-z0-9\-_]/g, "")
+                .toUpperCase();
+              field("code", sanitized);
+            }}
             disabled={mode === "edit"}
             className="h-10 text-sm border-2 font-mono"
           />
+          {mode === "create" && (
+            <p className="text-[10px] text-muted-foreground/60 font-mono mt-1">
+              Only letters, numbers, hyphens and underscores — spaces are automatically converted to underscores.
+            </p>
+          )}
           {mode === "edit" && (
             <p className="text-[10px] text-muted-foreground/50 font-mono mt-1">
               Code cannot be changed after creation (Stripe limitation).
