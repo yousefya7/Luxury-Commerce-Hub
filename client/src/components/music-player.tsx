@@ -83,12 +83,14 @@ export default function MusicPlayer() {
   const activeVideoIdRef = useRef<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const divIdRef = useRef<string>("");
+  const volumeSyncedRef = useRef(false);
 
   const destroyPlayer = useCallback(() => {
     console.log("[MusicPlayer] Destroying player instance");
     try { playerRef.current?.destroy(); } catch {}
     playerRef.current = null;
     activeVideoIdRef.current = null;
+    volumeSyncedRef.current = false;
     setPlayerReady(false);
     setIsPlaying(false);
     setNeedsClick(false);
@@ -218,11 +220,14 @@ export default function MusicPlayer() {
     return () => { destroyPlayer(); };
   }, [music?.enabled, music?.youtubeUrl, music?.loop, isAdmin, destroyPlayer]);
 
+  // Sync volume from dashboard settings on first ready only — don't override local slider changes
   useEffect(() => {
-    if (music?.volume !== undefined && playerRef.current && playerReady) {
-      try { playerRef.current.setVolume(music.volume); setLocalVolume(music.volume); } catch {}
+    if (playerReady && !volumeSyncedRef.current && music?.volume !== undefined) {
+      volumeSyncedRef.current = true;
+      try { playerRef.current?.setVolume(music.volume); } catch {}
+      setLocalVolume(music.volume);
     }
-  }, [music?.volume, playerReady]);
+  }, [playerReady, music?.volume]);
 
   useEffect(() => {
     if (!needsClick || !playerRef.current || !playerReady) return;
@@ -235,9 +240,28 @@ export default function MusicPlayer() {
     return () => document.removeEventListener("click", handler);
   }, [needsClick, playerReady]);
 
+  const setPlayerVolume = (val: number) => {
+    const p = playerRef.current;
+    if (!p) {
+      console.warn("[MusicPlayer] setVolume called but playerRef is null");
+      return;
+    }
+    try {
+      if (typeof p.setVolume === "function") {
+        p.setVolume(val);
+        console.log("[MusicPlayer] setVolume(" + val + ") called successfully");
+      } else {
+        console.error("[MusicPlayer] setVolume is not a function on player:", typeof p.setVolume);
+      }
+    } catch (err) {
+      console.error("[MusicPlayer] setVolume error:", err);
+    }
+  };
+
   const handleVolumeChange = (val: number) => {
+    console.log("[MusicPlayer] Volume slider changed to:", val, "| playerReady:", playerReady, "| player:", playerRef.current ? "exists" : "null");
     setLocalVolume(val);
-    try { playerRef.current?.setVolume(val); } catch {}
+    setPlayerVolume(val);
     if (val > 0 && isMuted) {
       try { playerRef.current?.unMute(); } catch {}
       setIsMuted(false);
@@ -253,15 +277,27 @@ export default function MusicPlayer() {
     try {
       if (isPlaying) { playerRef.current.pauseVideo(); console.log("[MusicPlayer] Paused by user"); }
       else { playerRef.current.playVideo(); console.log("[MusicPlayer] Played by user"); }
-    } catch {}
+    } catch (err) {
+      console.error("[MusicPlayer] togglePlay error:", err);
+    }
   };
 
   const toggleMute = () => {
     if (!playerRef.current || !playerReady) return;
     try {
-      if (isMuted) { playerRef.current.unMute(); setIsMuted(false); }
-      else { playerRef.current.mute(); setIsMuted(true); }
-    } catch {}
+      if (isMuted) {
+        playerRef.current.unMute();
+        playerRef.current.setVolume(localVolume || 60);
+        setIsMuted(false);
+        console.log("[MusicPlayer] Unmuted, volume restored to", localVolume || 60);
+      } else {
+        playerRef.current.mute();
+        setIsMuted(true);
+        console.log("[MusicPlayer] Muted");
+      }
+    } catch (err) {
+      console.error("[MusicPlayer] toggleMute error:", err);
+    }
   };
 
   if (isAdmin) return null;
@@ -390,8 +426,10 @@ export default function MusicPlayer() {
               max={100}
               value={isMuted ? 0 : localVolume}
               onChange={(e) => handleVolumeChange(Number(e.target.value))}
+              onInput={(e) => handleVolumeChange(Number((e.target as HTMLInputElement).value))}
               disabled={!playerReady}
               className="flex-1 h-1 accent-accent-blue cursor-pointer disabled:opacity-30"
+              style={{ touchAction: "none" }}
               data-testid="range-music-volume"
             />
           </div>
